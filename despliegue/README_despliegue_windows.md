@@ -95,6 +95,38 @@ Register-ScheduledTask -TaskName "Mi Diabetes - copia" -Action $accion -Trigger 
 Solo se ejecuta con el PC encendido, la sesión iniciada y Docker Desktop abierto.
 Guarda la contraseña de restic fuera del PC: sin ella no se puede restaurar.
 
+## Fase 2: importar el CSV de LibreView
+
+El CSV es un dato de salud: guárdalo fuera del repositorio (por ejemplo en `D:\Proyecto personal\MiDiabetes\datos\`)
+y no lo subas a ningún sitio. Se monta en el contenedor solo para leerlo.
+
+1. En LibreView (web): **Informes** → **Descargar datos de glucosa** (icono de descarga, arriba a la derecha) → guarda el CSV.
+2. Simula primero (no escribe nada; enseña columnas, fechas y recuentos):
+
+```powershell
+cd "D:\Proyecto personal\MiDiabetes\Mi-diabetes\despliegue"
+docker compose run --rm -v "D:\Proyecto personal\MiDiabetes\datos:/datos:ro" api `
+  python -m servicios.recoleccion.csv_libreview /datos/NOMBRE_DEL_ARCHIVO.csv --simular
+```
+
+3. Si las fechas y las unidades cuadran, importa (es idempotente: repetirlo no duplica):
+
+```powershell
+docker compose run --rm -v "D:\Proyecto personal\MiDiabetes\datos:/datos:ro" api `
+  python -m servicios.recoleccion.csv_libreview /datos/NOMBRE_DEL_ARCHIVO.csv
+```
+
+El resumen final dice cuántas dosis quedan emparejadas con la app, solo en la pluma, duplicadas
+(descartadas) o por revisar. `sin_marcar` debe ser 0. Repite el paso 3 cada semana como respaldo.
+
+### Comparar las métricas con Nightscout o LibreView
+
+```powershell
+docker compose run --rm api python -m comun.metricas --desde 2026-11-04 --hasta 2026-11-17
+```
+
+Compara TIR, GMI y CV con el informe del mismo periodo (criterio: TIR a menos de 1 punto, GMI a menos de 0,1).
+
 ## Probar sin datos reales
 
 ```powershell

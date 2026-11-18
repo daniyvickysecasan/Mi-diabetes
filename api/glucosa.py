@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query, Request
 
 from api.deps import requiere_sesion
+from api.dosis import resumen_panel
 from comun import glucosa as G
 
 router = APIRouter(prefix="/api", tags=["glucosa"])
@@ -54,4 +55,5 @@ def panel(request: Request, con=SESION):
             "error": ultima["error"] if ultima else None,
             "hueco_abierto": {"desde": huecos["inicio"].isoformat(), "minutos": huecos["minutos"]} if huecos else None,
         },
+        **resumen_panel(con, hasta),
     }
