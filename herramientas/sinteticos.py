@@ -80,3 +80,41 @@ def nueva_lectura(t: datetime, semilla: int = 99) -> dict:
 def ahora_redondeado() -> datetime:
     n = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     return n - timedelta(minutes=n.minute % 5)
+
+
+# ------------------------------------------------------------------ CSV de LibreView (sintético)
+CABECERA_LIBREVIEW_ES = [
+    "Dispositivo", "Número de serie", "Sello de tiempo del dispositivo", "Tipo de registro",
+    "Historial de glucosa mg/dL", "Escaneo de glucosa mg/dL", "Insulina de acción rápida sin valor numérico",
+    "Insulina de acción rápida (unidades)", "Alimentos sin valor numérico", "Carbohidratos (gramos)",
+    "Carbohidratos (porciones)", "Insulina de acción prolongada sin valor numérico",
+    "Insulina de acción prolongada (unidades)", "Notas", "Glucosa de la tira mg/dL", "Cetona mmol/L",
+    "Insulina para comidas (unidades)", "Insulina de corrección (unidades)",
+    "Insulina de cambio del usuario (unidades)"]
+
+
+def csv_libreview(dosis: list[tuple], glucosa: list[tuple] = (), lentas: list[tuple] = (),
+                  serie: str = "SINTETICA-0001", sep: str = ",") -> bytes:
+    """CSV con el formato de exportación de LibreView en español (formato supuesto: se ajusta al real).
+
+    dosis/lentas: (hora local naive, unidades, notas opcionales); glucosa: (hora local naive, mg/dL).
+    """
+    import csv as _csv
+    import io as _io
+    buf = _io.StringIO()
+    buf.write(f"Datos de glucosa{sep}Generado el{sep}18-11-2026 10:00 UTC{sep}Generado por{sep}Persona sintética\n")
+    w = _csv.writer(buf, delimiter=sep, lineterminator="\n")
+    w.writerow(CABECERA_LIBREVIEW_ES)
+    vacia = [""] * len(CABECERA_LIBREVIEW_ES)
+    for t, v in glucosa:
+        f = list(vacia); f[0] = "FreeStyle Libre 2"; f[1] = "SENSOR-1"; f[2] = t.strftime("%d-%m-%Y %H:%M")
+        f[3] = "0"; f[4] = str(v); w.writerow(f)
+    for d in dosis:
+        t, u, notas = (d + (None,))[:3]
+        f = list(vacia); f[0] = "NovoPen Echo Plus"; f[1] = serie; f[2] = t.strftime("%d-%m-%Y %H:%M")
+        f[3] = "4"; f[7] = f"{u:g}".replace(".", ",") if sep == ";" else f"{u:g}"; f[13] = notas or ""
+        w.writerow(f)
+    for t, u, *_ in lentas:
+        f = list(vacia); f[0] = "Manual"; f[1] = ""; f[2] = t.strftime("%d-%m-%Y %H:%M")
+        f[3] = "4"; f[12] = f"{u:g}"; w.writerow(f)
+    return buf.getvalue().encode("utf-8-sig")
