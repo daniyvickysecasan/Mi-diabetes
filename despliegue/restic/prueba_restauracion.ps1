@@ -1,17 +1,30 @@
 # Prueba de restauración: restaura la última copia en una base VACÍA y temporal y compara recuentos.
 # No toca la base de producción. Uso:  .\restic\prueba_restauracion.ps1
 $ErrorActionPreference = "Stop"
+# restic de winget: si no hay alias "restic" en el PATH, usar el ejecutable del paquete
+if (-not (Get-Command restic -ErrorAction SilentlyContinue)) {
+    $exe = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\restic.restic_*\restic*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($exe) { Set-Alias restic $exe.FullName } else { throw "No encuentro restic: winget install restic.restic" }
+}
 $aqui = Split-Path -Parent $MyInvocation.MyCommand.Path
 Get-Content "$aqui\restic.env" | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object {
     $k, $v = $_ -split '=', 2; [Environment]::SetEnvironmentVariable($k.Trim(), $v.Trim(), "Process")
 }
 $dir = Join-Path $env:TEMP "mi-diabetes-restauracion"
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $dir
-restic restore latest --tag mi-diabetes --target $dir
-$dump = Get-ChildItem -Recurse $dir -Filter *.dump | Select-Object -First 1
+New-Item -ItemType Directory $dir | Out-Null
+# "restic dump" saca cada archivo sin recrear C:\Users\... (restore copiaría también los permisos de esas carpetas)
+$instantanea = restic snapshots latest --tag mi-diabetes --json | ConvertFrom-Json | Select-Object -First 1
+foreach ($ruta in $instantanea.paths) {
+    $enRepo = "/" + ($ruta -replace ':', '' -replace '\\', '/')
+    restic dump $instantanea.short_id $enRepo --target (Join-Path $dir (Split-Path -Leaf $ruta))
+    if ($LASTEXITCODE -ne 0) { throw "restic dump falló para $enRepo" }
+}
+$dump = Get-ChildItem $dir -Filter *.dump | Select-Object -First 1
 $esperado = Get-Content "$($dump.FullName).recuentos.txt"
 
-docker rm -f md-restauracion 2>$null | Out-Null
+# (con "Stop", Windows PowerShell 5.1 corta el script si un programa escribe en stderr aunque se redirija)
+$ErrorActionPreference = "Continue"; docker rm -f md-restauracion *> $null; $ErrorActionPreference = "Stop"
 docker run -d --name md-restauracion -e POSTGRES_PASSWORD=temporal timescale/timescaledb:2.17.2-pg16 | Out-Null
 try {
     do { Start-Sleep 2 } until ((docker exec md-restauracion pg_isready -U postgres) -match "accepting")
