@@ -62,7 +62,7 @@ LibreLinkUp sube lecturas tarde) y marca los huecos de más de 20 min. Ver los r
 ## 4. Primera passkey
 
 La passkey queda atada al dominio (`RP_ID`). Para usarla en el iPhone, el alta se hace ya en
-`https://app.intelligentcontrol.net` (paso 5). Para probar antes en el PC, pon temporalmente
+`https://midiabetes.intelligentcontrol.net` (paso 5). Para probar antes en el PC, pon temporalmente
 `RP_ID=localhost`, `ORIGENES=http://localhost:8000`, `COOKIE_SEGURA=0`, reinicia
 (`docker compose up -d`) y abre http://localhost:8000.
 
@@ -73,7 +73,7 @@ En la app: *Dar de alta una passkey* → escribe `CODIGO_ALTA` → Face ID. Desp
 ## 5. Túnel y Access
 
 Sigue `cloudflared/README.md` y arranca con `docker compose --profile tunel up -d`.
-En el iPhone abre `https://app.intelligentcontrol.net` en Safari → Compartir → *Añadir a pantalla de inicio*.
+En el iPhone abre `https://midiabetes.intelligentcontrol.net` en Safari → Compartir → *Añadir a pantalla de inicio*.
 
 ## 6. Copias cifradas (restic)
 

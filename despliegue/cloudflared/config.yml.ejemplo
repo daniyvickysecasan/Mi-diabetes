@@ -3,7 +3,7 @@
 tunnel: <ID-DEL-TUNEL>
 credentials-file: /etc/cloudflared/<ID-DEL-TUNEL>.json
 ingress:
-  - hostname: app.intelligentcontrol.net
+  - hostname: midiabetes.intelligentcontrol.net
     service: http://api:8000
   - hostname: ntfy.intelligentcontrol.net
     service: http://ntfy:80
