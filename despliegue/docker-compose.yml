@@ -1,0 +1,95 @@
+# Mi Diabetes: base de datos, migraciones, recolector, API y túnel.
+#
+#   cd despliegue
+#   copy .env.example .env      (y rellénalo)
+#   docker compose up -d --build
+#
+# Para probar sin datos reales (Nightscout simulado):
+#   docker compose --profile simulado up -d --build
+#   (y en .env: NIGHTSCOUT_URL=http://nightscout-simulado:1337, NIGHTSCOUT_TOKEN=prueba-lectura)
+#
+# Túnel de Cloudflare (cuando esté configurado):
+#   docker compose --profile tunel up -d
+
+name: mi-diabetes
+
+x-app: &app
+  build: ..
+  image: mi-diabetes:local
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  depends_on:
+    migraciones:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TIMESCALEDB_TELEMETRY: "off"
+    volumes:
+      - datos_bd:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${PUERTO_BD_LOCAL:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migraciones:
+    build: ..
+    image: mi-diabetes:local
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    command: ["python", "-m", "comun.migrar"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  recolector:
+    <<: *app
+    command: ["python", "-m", "servicios.recoleccion", "servicio"]
+
+  api:
+    <<: *app
+    ports:
+      - "127.0.0.1:${PUERTO_API_LOCAL:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/salud')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  nightscout-simulado:
+    profiles: ["simulado"]
+    build: ..
+    image: mi-diabetes:local
+    environment:
+      NS_TOKEN: prueba-lectura
+      NS_DIAS: "30"
+      NS_EN_VIVO: "1"
+    command: ["python", "-m", "herramientas.nightscout_simulado"]
+    ports:
+      - "127.0.0.1:1338:1337"
+
+  cloudflared:
+    profiles: ["tunel"]
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - api
+
+volumes:
+  datos_bd:
