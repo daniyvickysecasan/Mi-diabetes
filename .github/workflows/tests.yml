@@ -1,0 +1,24 @@
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    services:
+      tsdb:
+        image: timescale/timescaledb:2.17.2-pg16
+        env:
+          POSTGRES_PASSWORD: prueba
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:prueba@localhost:5433/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-pruebas.txt
+      - run: pytest -q

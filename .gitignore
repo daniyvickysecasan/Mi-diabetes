@@ -1,0 +1,30 @@
+# Secretos
+.env
+*.env
+!.env.example
+despliegue/cloudflared/*.json
+despliegue/cloudflared/config.yml
+despliegue/restic/restic.env
+
+# Datos de salud y personales: nunca al repositorio
+datos/
+copias/
+*.jsonl
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+*.csv
+!servicios/comidas/alimentos_propios.csv
+fotos/
+uploads/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/

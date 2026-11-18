@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mi Diabetes">
+  <title>Mi Diabetes</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icono.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icono-180.png">
+  <link rel="stylesheet" href="estilo.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main id="entrada" class="tarjeta oculto" aria-labelledby="t-entrada">
+    <h1 id="t-entrada">Mi Diabetes</h1>
+    <p class="suave">Entra con tu passkey (Face ID).</p>
+    <button id="btn-entrar" class="primario">Entrar con passkey</button>
+    <details id="alta">
+      <summary>Dar de alta una passkey en este dispositivo</summary>
+      <label for="codigo">Código de alta</label>
+      <input id="codigo" type="password" autocomplete="off">
+      <label for="nombre">Nombre del dispositivo</label>
+      <input id="nombre" type="text" value="iPhone">
+      <button id="btn-alta">Crear passkey</button>
+    </details>
+    <p id="msg-entrada" class="mensaje" role="status"></p>
+  </main>
+
+  <main id="panel" class="oculto" aria-label="Panel de glucosa">
+    <section class="actual" aria-live="polite">
+      <div id="valor" class="valor">--</div>
+      <div class="detalle">
+        <span id="flecha" class="flecha"></span>
+        <span id="delta"></span>
+        <span class="suave">mg/dL</span>
+      </div>
+      <div id="edad" class="suave"></div>
+      <div id="aviso" class="aviso oculto" role="alert"></div>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Últimas 24 h</h2>
+      <svg id="grafica" viewBox="0 0 360 180" role="img" aria-label="Gráfica de glucosa de las últimas 24 horas"></svg>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Tiempo en rango <span id="rango" class="suave"></span></h2>
+      <div class="tir" id="tir24"></div>
+      <div class="tir" id="tir14"></div>
+    </section>
+
+    <footer class="pie suave">
+      <span id="recoleccion"></span>
+      <button id="btn-salir" class="enlace">Salir</button>
+    </footer>
+  </main>
+</body>
+</html>

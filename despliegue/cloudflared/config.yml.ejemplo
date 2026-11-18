@@ -1,0 +1,10 @@
+# Alternativa al túnel con token: túnel local definido por archivo.
+# Copia a config.yml (no se versiona) y deja el JSON de credenciales junto a él.
+tunnel: <ID-DEL-TUNEL>
+credentials-file: /etc/cloudflared/<ID-DEL-TUNEL>.json
+ingress:
+  - hostname: app.intelligentcontrol.net
+    service: http://api:8000
+  - hostname: ntfy.intelligentcontrol.net
+    service: http://ntfy:80
+  - service: http_status:404
