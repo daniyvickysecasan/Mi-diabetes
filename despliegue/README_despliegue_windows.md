@@ -84,7 +84,16 @@ notepad restic\restic.env
 .\restic\prueba_restauracion.ps1   # restaura en una base vacía y compara recuentos
 ```
 
-Programa `copia.ps1` a diario en el Programador de tareas. Guarda la contraseña de restic fuera del PC.
+Programa `copia.ps1` a diario (PowerShell, desde `despliegue`):
+
+```powershell
+$accion = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory "$PWD" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\restic\copia.ps1`""
+Register-ScheduledTask -TaskName "Mi Diabetes - copia" -Action $accion -Trigger (New-ScheduledTaskTrigger -Daily -At 03:30)
+```
+
+Solo se ejecuta con el PC encendido, la sesión iniciada y Docker Desktop abierto.
+Guarda la contraseña de restic fuera del PC: sin ella no se puede restaurar.
 
 ## Probar sin datos reales
 

@@ -2,6 +2,11 @@
 # Uso (PowerShell, desde la carpeta despliegue):  .\restic\copia.ps1
 # Programar a diario: Programador de tareas → Crear tarea básica → powershell -File ...\copia.ps1
 $ErrorActionPreference = "Stop"
+# restic de winget: si no hay alias "restic" en el PATH, usar el ejecutable del paquete
+if (-not (Get-Command restic -ErrorAction SilentlyContinue)) {
+    $exe = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\restic.restic_*\restic*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($exe) { Set-Alias restic $exe.FullName } else { throw "No encuentro restic: winget install restic.restic" }
+}
 $aqui = Split-Path -Parent $MyInvocation.MyCommand.Path
 Get-Content "$aqui\restic.env" | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object {
     $k, $v = $_ -split '=', 2; [Environment]::SetEnvironmentVariable($k.Trim(), $v.Trim(), "Process")
@@ -14,10 +19,15 @@ try {
     docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/copia.dump'
     docker compose cp db:/tmp/copia.dump $tmp
     docker compose exec -T db rm -f /tmp/copia.dump
-    # Recuentos para comprobar la restauración después
-    docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "SELECT ''glucosa'', count(*) FROM glucosa UNION ALL SELECT ''dosis'', count(*) FROM dosis UNION ALL SELECT ''comidas'', count(*) FROM comidas"' |
-        Set-Content "$tmp.recuentos.txt"
-    if (-not (restic cat config 2>$null)) { restic init }
+    # Recuentos para comprobar la restauración después.
+    # El SQL va por stdin: Windows PowerShell 5.1 quita las comillas dobles internas de los argumentos.
+    $recuentos = "SELECT 'glucosa', count(*) FROM glucosa UNION ALL SELECT 'dosis', count(*) FROM dosis UNION ALL SELECT 'comidas', count(*) FROM comidas;" |
+        docker compose exec -T db sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -At -v ON_ERROR_STOP=1'
+    if ($LASTEXITCODE -ne 0 -or -not $recuentos) { throw "No se pudieron obtener los recuentos" }
+    $recuentos | Set-Content "$tmp.recuentos.txt"
+    # En Windows PowerShell 5.1 el stderr de un programa con "Stop" corta el script: comprobar con "Continue"
+    $ErrorActionPreference = "Continue"; restic cat config *> $null; $existe = ($LASTEXITCODE -eq 0); $ErrorActionPreference = "Stop"
+    if (-not $existe) { restic init }
     restic backup $tmp "$tmp.recuentos.txt" --tag mi-diabetes
     restic forget --tag mi-diabetes --keep-daily 7 --keep-weekly 5 --keep-monthly 12 --prune
     restic check
