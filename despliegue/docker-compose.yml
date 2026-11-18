@@ -10,6 +10,9 @@
 #
 # Túnel de Cloudflare (cuando esté configurado):
 #   docker compose --profile tunel up -d
+#
+# Recolector de la pluma (LibreView), cuando esté confirmado:
+#   docker compose --profile pluma up -d
 
 name: mi-diabetes
 
@@ -58,6 +61,13 @@ services:
   recolector:
     <<: *app
     command: ["python", "-m", "servicios.recoleccion", "servicio"]
+
+  # Dosis de la pluma desde LibreView → base → Nightscout. Con perfil propio hasta confirmar el
+  # endpoint de LibreView con tu cuenta:  docker compose --profile pluma up -d
+  recolector-pluma:
+    <<: *app
+    profiles: ["pluma"]
+    command: ["python", "-m", "servicios.recoleccion.pluma_cli", "servicio"]
 
   api:
     <<: *app
