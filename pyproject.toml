@@ -1,0 +1,23 @@
+[project]
+name = "mi-diabetes"
+version = "0.1.0"
+description = "Sistema personal y local para gestionar la diabetes"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.121",
+    "uvicorn[standard]>=0.30",
+    "psycopg[binary]>=3.2",
+    "httpx>=0.27",
+    "webauthn>=2.2",
+]
+
+[project.optional-dependencies]
+pruebas = ["pytest>=8", "cryptography>=42", "cbor2>=5"]
+
+[tool.setuptools.packages.find]
+include = ["comun*", "api*", "servicios*", "herramientas*"]
+exclude = ["servicios.comidas*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
