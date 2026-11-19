@@ -155,5 +155,5 @@ def para_la_app(f: dict) -> dict:
         "u_inmediata": num(f["u_inmediata"]), "u_segunda": num(f["u_segunda"]),
         "ts_segunda": f["ts_segunda"].isoformat() if f["ts_segunda"] else None,
         "estado_pluma": f["estado_pluma"], "bloqueada": f["bloqueada"], "motivo_bloqueo": f["motivo_bloqueo"],
-        "incertidumbre": f["incertidumbre"], "avisos": f["avisos"],
+        "incertidumbre": f["incertidumbre"], "avisos": f["avisos"], "freno": f["traza"].get("freno", []),
     }

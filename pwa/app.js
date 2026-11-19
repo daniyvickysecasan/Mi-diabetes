@@ -1,5 +1,5 @@
 "use strict";
-// PWA: entrada con passkey, panel, registro de dosis e hidratos, Tresiba y revisión.
+// PWA: entrada con passkey, panel, sugerencia de dosis, registro de dosis e hidratos, Tresiba y revisión.
 // Sin dependencias externas. Los registros sin conexión esperan en una cola y se reenvían solos.
 
 const ZONA = "Europe/Madrid";
@@ -149,6 +149,7 @@ async function refrescar() {
     pintarTir($("tir14"), "14 días", p.tir_14d);
     pintarFase2(p);
     estadoLibreView();
+    avisoSegunda();
     const r = p.recoleccion;
     $("recoleccion").textContent = r.error ? `Recolección con error: ${r.error}` :
       r.ultima ? `Recolectado a las ${hora(r.ultima)}` : "Recolección sin ejecutar";
@@ -467,9 +468,185 @@ async function cargarRevisar() {
   }
 }
 
+// ------------------------------------------------------------------ dosis (fase 3)
+// Antes de cada cálculo se lee la pluma en LibreView. Si la lectura falla, el cálculo no inventa:
+// queda bloqueado hasta leerla o hasta que confirmes que todas tus dosis están apuntadas.
+let tipoSug = "comida", ocupado = false, reintento = null;
+const NIVEL = { alta: "Incertidumbre alta", media: "Incertidumbre media", baja: "Incertidumbre baja" };
+const DECISION = { hecho: "Hecho", modificado: "Modificado", ignorado: "Ignorado" };
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+function nodo(tag, cls = "", texto = "") { const e = document.createElement(tag); if (cls) e.className = cls; if (texto) e.textContent = texto; return e; }
+const numero = (id) => { const v = leerNumero($(id).value); return Number.isFinite(v) ? v : undefined; };
+
+function peticionSugerencia() {
+  if (tipoSug === "correccion") return { tipo: "correccion" };
+  const hc = numero("s-hc");
+  if (!(hc >= 0)) throw new Error("Escribe los hidratos (0 si no comes)");
+  const p = { tipo: "comida", hidratos_g: hc };
+  for (const [id, k] of [["s-hc-min", "hidratos_min_g"], ["s-hc-max", "hidratos_max_g"], ["s-grasa", "grasa_g"], ["s-prot", "proteina_g"]]) {
+    const v = numero(id); if (v !== undefined) p[k] = v;
+  }
+  return p;
+}
+
+async function leerPluma() {
+  const est = $("s-estado");
+  est.textContent = "Leyendo las dosis de la pluma en LibreView…";
+  const { solicitud } = await pedir("/api/libreview/actualizar", {});
+  for (let i = 0; i < 45; i++) {
+    const s = await pedir(`/api/libreview/actualizar/${solicitud}`);
+    if (s.resultado) {
+      est.textContent = s.resultado === "ok" ? "Pluma leída." : s.resultado === "sin_sesion"
+        ? "LibreView pide el código del SMS (dáselo en el panel) o apunta tus dosis."
+        : `No se ha podido leer la pluma: ${s.detalle || "error"}.`;
+      return solicitud;
+    }
+    await espera(2000);
+  }
+  est.textContent = "El lector de la pluma no responde.";
+  return solicitud;
+}
+
+// Pide al servidor (que responde 409 mientras la lectura no ha terminado) y pinta el resultado.
+async function conPluma(ruta, cuerpo, apuntadas) {
+  if (ocupado) return;
+  ocupado = true; $("s-calcular").disabled = true; $("s-apuntadas").classList.add("oculto");
+  try {
+    if (!apuntadas) cuerpo.solicitud_lectura_id = await leerPluma();
+    else cuerpo.dosis_apuntadas = true;
+    let s;
+    for (let i = 0; i < 10 && !s; i++) {
+      try { s = await pedir(ruta, cuerpo); } catch (e) { if (e.estado !== 409) throw e; await espera(3000); }
+    }
+    if (!s) throw new Error("La lectura de la pluma no termina: inténtalo de nuevo");
+    pintarSugerencia(s);
+    if (s.bloqueada && s.freno.length === 1 && s.freno[0] === "pluma_sin_leer") {
+      reintento = () => conPluma(ruta, { ...cuerpo }, true);
+      $("s-apuntadas").classList.remove("oculto");
+    }
+    cargarDosis();
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(e.estado ? e.message : "Sin conexión: el cálculo necesita conexión", true);
+  } finally { ocupado = false; $("s-calcular").disabled = false; }
+}
+
+function calcularDosis(ev) {
+  ev.preventDefault();
+  let cuerpo;
+  try { cuerpo = peticionSugerencia(); } catch (e) { return aviso(e.message, true); }
+  conPluma("/api/sugerencias", cuerpo, false);
+}
+
+const comprobarSegunda = (id) => { ir("dosis"); conPluma(`/api/sugerencias/${id}/segunda`, {}, false); };
+
+function textoDecision(d) {
+  let t = `${DECISION[d.decision]}${d.unidades != null ? `: ${num(d.unidades)} U` : ""} a las ${hora(d.ts)}`;
+  const r = d.resultado;
+  if (r && r.lecturas) t += ` · a las 3 h ${r.glucosa_3h ?? "--"}, mín ${r.minima}, máx ${r.maxima}, ${num(r.pct_en_rango, 0)}% en rango${r.hipo ? " · HIPO" : ""}`;
+  else if (!r) t += " · resultado a las 4 h";
+  return t;
+}
+
+async function decidirSug(s, decision, unidades) {
+  try {
+    const cuerpo = { id_cliente: nuevoId(), decision };
+    if (decision === "modificado") cuerpo.unidades = unidades;
+    const r = await pedir(`/api/sugerencias/${s.id}/decision`, cuerpo);
+    aviso(`${DECISION[decision]}${r.sugerencia.decision.unidades ? `: ${num(r.sugerencia.decision.unidades)} U apuntadas` : ""}`);
+    pintarSugerencia(r.sugerencia);
+    cargarDosis();
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(e.estado ? e.message : "Sin conexión: la decisión necesita conexión", true);
+  }
+}
+
+function botonesDecision(s) {
+  const caja = nodo("div");
+  const fila = nodo("div", "decidir");
+  const boton = (texto, cls, f) => { const b = nodo("button", cls, texto); b.type = "button"; b.addEventListener("click", f); fila.append(b); };
+  const mod = nodo("form", "modificar oculto");
+  const inp = nodo("input"); inp.inputMode = "decimal"; inp.placeholder = "U que te has puesto"; inp.setAttribute("aria-label", "Unidades");
+  const ok = nodo("button", "primario", "Guardar"); ok.type = "submit";
+  mod.append(inp, ok);
+  mod.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const u = leerNumero(inp.value);
+    if (!(u >= 0)) return aviso("Escribe las unidades", true);
+    decidirSug(s, "modificado", u);
+  });
+  if (!s.bloqueada) boton(`Hecho (${num(s.u_inmediata)} U)`, "primario", () => decidirSug(s, "hecho"));
+  boton(s.bloqueada ? "Me he puesto…" : "Modificado", "", () => { mod.classList.remove("oculto"); inp.focus(); });
+  boton(s.bloqueada ? "No me pongo" : "Ignorado", "", () => decidirSug(s, "ignorado"));
+  caja.append(fila, mod);
+  return caja;
+}
+
+function pintarSugerencia(s) {
+  const c = $("s-resultado");
+  c.classList.remove("oculto"); c.replaceChildren();
+  const titulo = { segunda: "Segunda inyección", correccion: "Corrección", comida: "Dosis para la comida" }[s.tipo];
+  c.append(nodo("h2", "", `${titulo} · ${hora(s.ts)}`));
+  if (s.bloqueada) {
+    c.append(nodo("div", "sug-bloqueada", `No se sugiere ninguna dosis. ${s.motivo_bloqueo}`));
+  } else {
+    const u = nodo("div", "sug-u", num(s.u_inmediata)); u.append(nodo("span", "unidad", " U"));
+    const inc = s.incertidumbre, f = nodo("div", "centro");
+    f.append(nodo("span", `incert ${inc.nivel}`, NIVEL[inc.nivel] || inc.nivel));
+    if (inc.rango_u && inc.rango_u[0] !== inc.rango_u[1]) f.append(nodo("span", "suave", ` · entre ${num(inc.rango_u[0])} y ${num(inc.rango_u[1])} U`));
+    c.append(u, f);
+    if (inc.motivos.length) c.append(nodo("p", "suave pequeno centro", inc.motivos.join(" ")));
+    c.append(nodo("p", "suave pequeno desglose", s.tipo === "segunda"
+      ? `Glucosa ${s.glucosa_mgdl} mg/dL · insulina activa ${num(s.insulina_activa_u, 2)} U`
+      : `Hidratos ${num(s.u_hidratos, 2)} U + corrección ${num(s.u_correccion, 2)} U − insulina activa ${num(s.insulina_activa_u, 2)} U · glucosa ${s.glucosa_mgdl} mg/dL`));
+    if (s.u_segunda) c.append(nodo("p", "fuerte", `Y una segunda inyección de ${num(s.u_segunda)} U a las ${hora(s.ts_segunda)} por la grasa y la proteína (${num(s.ugp)} UGP). A esa hora se vuelve a comprobar tu glucosa.`));
+  }
+  if (s.avisos.length) { const ul = nodo("ul", "avisos"); for (const a of s.avisos) ul.append(nodo("li", "", a)); c.append(ul); }
+  c.append(s.decision ? nodo("p", "suave", textoDecision(s.decision)) : botonesDecision(s));
+}
+
+const segundaAbierta = (s, ahora = Date.now()) => s.u_segunda && !s.segunda_comprobada_id && s.decision?.decision !== "ignorado"
+  && ahora >= Date.parse(s.ts_segunda) - 15 * 60e3 && ahora <= Date.parse(s.ts_segunda) + 120 * 60e3;
+
+async function cargarDosis() {
+  const ul = $("s-lista");
+  try {
+    const { sugerencias } = await pedir("/api/sugerencias?horas=48");
+    if (!sugerencias.length) { ul.replaceChildren(li("Todavía no hay sugerencias", "suave")); return; }
+    ul.replaceChildren(...sugerencias.map((s) => {
+      const e = nodo("li", "caso");
+      const cab = s.tipo === "comida" ? `comida ${num(s.hidratos_g, 0)} g` : s.tipo === "segunda" ? "segunda inyección" : "corrección";
+      const t = nodo("div", "fuerte", `${fechaHora(s.ts)} · ${cab} · ${s.bloqueada ? "bloqueada" : `${num(s.u_inmediata)} U`}`
+        + (s.u_segunda ? ` + ${num(s.u_segunda)} U a las ${hora(s.ts_segunda)}` : ""));
+      t.addEventListener("click", () => { pintarSugerencia(s); window.scrollTo(0, 0); });
+      e.append(t, nodo("div", "suave pequeno", s.decision ? textoDecision(s.decision) : "Sin decidir: toca para verla"));
+      if (segundaAbierta(s)) {
+        const b = nodo("button", "primario", `Comprobar la segunda inyección (${hora(s.ts_segunda)})`);
+        b.addEventListener("click", () => comprobarSegunda(s.id));
+        e.append(b);
+      }
+      return e;
+    }));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    ul.replaceChildren(li("Sin conexión con el servidor", "suave"));
+  }
+}
+
+async function avisoSegunda() {
+  const a = $("aviso-segunda");
+  try {
+    const { sugerencias } = await pedir("/api/sugerencias?horas=8");
+    const s = sugerencias.find((x) => segundaAbierta(x));
+    a.classList.toggle("oculto", !s);
+    a.textContent = s ? `Segunda inyección de ${num(s.u_segunda)} U a las ${hora(s.ts_segunda)}: compruébala antes de ponerla →` : "";
+  } catch { a.classList.add("oculto"); }
+}
+
 // ------------------------------------------------------------------ navegación
 let temporizador, vista = "panel";
-const CARGAS = { panel: refrescar, registrar: cargarRegistrar, tresiba: cargarTresiba, revisar: cargarRevisar };
+const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: cargarRegistrar, tresiba: cargarTresiba, revisar: cargarRevisar };
 const refrescarVista = () => CARGAS[vista]();
 
 function ir(cual, foco) {
@@ -522,6 +699,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-fiasp").addEventListener("submit", enviarFiasp);
   $("f-hc").addEventListener("submit", enviarHidratos);
   $("f-tresiba").addEventListener("submit", enviarTresiba);
+  $("f-sug").addEventListener("submit", calcularDosis);
+  $("s-apuntadas").addEventListener("click", () => reintento && reintento());
+  document.querySelectorAll("[data-tipo]").forEach((b) => b.addEventListener("click", () => {
+    tipoSug = b.dataset.tipo;
+    document.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("activo", x === b));
+    $("s-comida").classList.toggle("oculto", tipoSug !== "comida");
+  }));
   window.addEventListener("online", () => { vaciarCola(); refrescarVista(); });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !$("panel").classList.contains("oculto")) { vaciarCola(); refrescarVista(); }
