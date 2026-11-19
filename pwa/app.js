@@ -260,6 +260,9 @@ function pintarFase2(p) {
   const n = i.dosis.length;
   $("iob-detalle").textContent = n ? `${n} dosis en las últimas 5 h · curva Fiasp (pico ${p.curva.pico_min} min, ${p.curva.duracion_min / 60} h)` +
     (i.con_dudas ? " · incluye dosis sin confirmar por la pluma" : "") : "Sin dosis de Fiasp en las últimas 5 h";
+  const ap = $("aviso-pluma");
+  ap.classList.toggle("oculto", !p.aviso_pluma);
+  ap.textContent = p.aviso_pluma ? p.aviso_pluma.texto : "";
   const r = $("aviso-revisar");
   r.classList.toggle("oculto", !p.por_revisar);
   r.textContent = p.por_revisar ? `${p.por_revisar} dosis por revisar →` : "";
