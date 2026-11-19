@@ -129,8 +129,9 @@ Compara TIR, GMI y CV con el informe del mismo periodo (criterio: TIR a menos de
 
 ## Fase 2: dosis de la pluma leídas solas de LibreView
 
-El recolector `recolector-pluma` pide cada 12 horas (`INTERVALO_INFORME_S`) a la web de LibreView el informe "Registro diario",
-que trae la hora y las unidades de cada inyección de la pluma (sin los cebados marcados en LibreLink).
+El recolector `recolector-pluma` lee la web de LibreView **solo cuando se pide**: con el botón
+**Actualizar dosis de la pluma** del panel o, en la fase 3, al pedir el cálculo de una dosis. Lee el
+informe "Registro diario", que trae la hora y las unidades de cada inyección de la pluma (sin los cebados marcados en LibreLink).
 Es una API no oficial: si LibreView la cambia, el panel lo avisa y siguen valiendo la app y el CSV.
 
 1. En `despliegue\.env` rellena `LIBREVIEW_EMAIL` y `LIBREVIEW_PASSWORD` (los de libreview.com).
@@ -143,7 +144,7 @@ Es una API no oficial: si LibreView la cambia, el panel lo avisa y siguen valien
 3. Abre la app en el iPhone. Saldrá el aviso "LibreView pide el código del SMS": pulsa
    **Enviarme el SMS** y escribe el código que te llegue. Desde ahí va solo; LibreView recuerda el
    dispositivo (unas dos semanas) y, cuando vuelva a pedirlo, la app te lo dirá igual.
-4. Comprueba: `docker compose logs --tail 20 recolector-pluma` debe decir "informe: N dosis nuevas".
+4. Pulsa **Actualizar dosis de la pluma** en el panel y comprueba: `docker compose logs --tail 20 recolector-pluma` debe decir "lectura: N dosis nuevas".
 5. Retraso medido: `docker compose run --rm recolector-pluma python -m servicios.recoleccion.pluma_cli retraso`.
 
 Si en una misma hora te pinchas dos veces, LibreView solo da la suma de esa hora: esas dosis no se

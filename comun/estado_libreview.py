@@ -13,7 +13,10 @@ La API y el recolector no se hablan: se comunican solo por la fila única de `es
                          │ app: escribe el código    │
                          ▼                           │
                        codigo_recibido ──────────────┘ (o vuelve a necesita_codigo si falla)
-  error: LibreView no responde o ha cambiado; el recolector lo reintenta en cada vuelta.
+  error: LibreView no responde o ha cambiado; se reintenta en la siguiente lectura pedida.
+
+LibreView solo se lee cuando se pide (solicitudes_lectura_pluma): desde la app o, en la fase 3,
+antes de calcular una dosis.
 
 El SMS solo se manda cuando Daniel lo pide en la app (así no llegan SMS a deshoras ni caducan).
 El código se borra de la base en cuanto se usa.
@@ -23,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 
 PATRON_CODIGO = re.compile(r"^[0-9]{4,8}$")
 CADUCIDAD_CODIGO = timedelta(minutes=10)     # sin código en este tiempo: hay que pedir otro SMS
-INTERVALO_INFORME = timedelta(hours=12)      # cada cuánto lee LibreView el recolector (por defecto)
+SIN_RESPUESTA = timedelta(minutes=2)         # lectura pedida sin atender en este tiempo: el lector no está
 
 
 class EstadoNoPermite(ValueError):
@@ -52,6 +55,28 @@ def pedir_sms(con) -> dict:
     return leer(con)
 
 
+# ------------------------------------------------------------------ lectura bajo demanda
+def pedir_lectura(con) -> dict:
+    """Desde la app (o, en la fase 3, antes de calcular una dosis): leer LibreView ahora.
+    Inserta una solicitud; el recolector la atiende en segundos (INTERVALO_PLUMA_S) y la cierra con
+    resultado ok, error o sin_sesion (LibreView pide el SMS). Devuelve la solicitud."""
+    return con.execute("INSERT INTO solicitudes_lectura_pluma DEFAULT VALUES RETURNING *").fetchone()
+
+
+def solicitud(con, id_: int) -> dict | None:
+    return con.execute("SELECT * FROM solicitudes_lectura_pluma WHERE id = %s", (id_,)).fetchone()
+
+
+def hay_solicitudes(con) -> bool:
+    return con.execute("SELECT 1 FROM solicitudes_lectura_pluma WHERE atendida_en IS NULL LIMIT 1").fetchone() is not None
+
+
+def cerrar_solicitudes(con, resultado: str, detalle: str | None = None) -> int:
+    """Cierra todas las abiertas: una lectura de LibreView responde a todas a la vez."""
+    return con.execute("""UPDATE solicitudes_lectura_pluma SET atendida_en = now(), resultado = %s, detalle = %s
+                          WHERE atendida_en IS NULL""", (resultado, (detalle or "")[:300] or None)).rowcount
+
+
 def dar_codigo(con, codigo: str) -> dict:
     """Desde la app: Daniel escribe el código que le ha llegado."""
     codigo = (codigo or "").strip().replace(" ", "")
@@ -63,7 +88,7 @@ def dar_codigo(con, codigo: str) -> dict:
     return leer(con)
 
 
-def para_la_app(con, ahora: datetime | None = None, intervalo: timedelta = INTERVALO_INFORME) -> dict:
+def para_la_app(con, ahora: datetime | None = None) -> dict:
     """Lo que ve la app: estado, texto y si hay que mostrar el botón del SMS o la casilla del código.
     Nunca devuelve el código."""
     ahora = ahora or datetime.now(timezone.utc)
@@ -72,7 +97,10 @@ def para_la_app(con, ahora: datetime | None = None, intervalo: timedelta = INTER
     if estado == "esperando_codigo" and e["cambiado_en"] < ahora - CADUCIDAD_CODIGO:
         estado = "necesita_codigo"                       # el SMS ya habrá caducado
     r = {"estado": estado, "ultimo_ok": e["ultimo_ok"], "ultima_sincronizacion": e["ultima_sincronizacion"],
-         "accion": None, "mensaje": None}
+         "leyendo": False, "accion": None, "mensaje": None}
+    abierta = con.execute("SELECT min(pedida_en) AS t FROM solicitudes_lectura_pluma WHERE atendida_en IS NULL").fetchone()["t"]
+    if abierta is not None:
+        r["leyendo"] = abierta >= ahora - SIN_RESPUESTA
     if estado == "necesita_codigo":
         r |= {"accion": "pedir_sms",
               "mensaje": "LibreView pide el código del SMS para seguir leyendo la pluma."}
@@ -83,10 +111,10 @@ def para_la_app(con, ahora: datetime | None = None, intervalo: timedelta = INTER
         r |= {"accion": "codigo", "mensaje": f"Escribe el código que te ha llegado por SMS{destino}."}
     elif estado == "codigo_recibido":
         r |= {"accion": "esperar", "mensaje": "Comprobando el código con LibreView…"}
+    elif r["leyendo"]:
+        r |= {"accion": "esperar", "mensaje": "Leyendo las dosis de la pluma en LibreView…"}
     elif estado == "error":
         r |= {"mensaje": "No se pueden leer las dosis de LibreView: " + (e["error"] or "error desconocido")}
-    elif estado == "ok" and e["ultimo_ok"] and e["ultimo_ok"] < ahora - (2 * intervalo + timedelta(minutes=30)):
-        # Se han perdido al menos dos lecturas seguidas.
-        horas = round((ahora - e["ultimo_ok"]).total_seconds() / 3600)
-        r |= {"estado": "caido", "mensaje": f"Hace {horas} h que no se leen las dosis de LibreView."}
+    elif abierta is not None:
+        r |= {"estado": "sin_lector", "mensaje": "El lector de la pluma no responde: ¿está arrancado recolector-pluma?"}
     return r

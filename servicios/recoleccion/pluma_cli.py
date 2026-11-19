@@ -1,7 +1,7 @@
 """Línea de comandos del recolector de la pluma (web de LibreView → base → Nightscout).
 
-  python -m servicios.recoleccion.pluma_cli servicio           # bucle: SMS desde la app + informe cada INTERVALO_INFORME_S (12 h)
-  python -m servicios.recoleccion.pluma_cli ciclo              # una vuelta (últimos 14 días, como la web)
+  python -m servicios.recoleccion.pluma_cli servicio           # bucle: atiende el SMS y las lecturas pedidas desde la app
+  python -m servicios.recoleccion.pluma_cli ciclo              # lee LibreView ya (últimos 14 días)
   python -m servicios.recoleccion.pluma_cli historico [--dias 14]
   python -m servicios.recoleccion.pluma_cli retraso [--dias 7] # retraso inyección → visto, y frente a la app
 
@@ -63,28 +63,23 @@ def main(argv=None) -> int:
     if a.orden in ("ciclo", "historico"):
         dias, modo = (a.dias, "historico") if a.orden == "historico" else (14, "incremental")
         with conectar(aj.database_url, autocommit=True) as con:
-            _imprimir(sondeo_libreview.vuelta(con, lv, escritor, dias=dias, modo=modo))
+            _imprimir(sondeo_libreview.vuelta(con, lv, escritor, sincronizar=True, dias=dias, modo=modo))
         return 0
 
     parar = {"si": False}
     signal.signal(signal.SIGTERM, lambda *_: parar.update(si=True))
-    log.info("Recolector de la pluma: mira la base cada %s s y pide el informe cada %s s",
-             aj.intervalo_pluma_s, aj.intervalo_informe_s)
-    ultimo_informe = float("-inf")
+    log.info("Recolector de la pluma: mira la base cada %s s; lee LibreView solo cuando se pide",
+             aj.intervalo_pluma_s)
     while not parar["si"]:
-        toca = time.monotonic() - ultimo_informe >= aj.intervalo_informe_s
         try:
             with conectar(aj.database_url, autocommit=True) as con:
-                res = sondeo_libreview.vuelta(con, lv, escritor, sincronizar=toca)
-            if res["accion"] in ("sincronizado", "error"):
-                ultimo_informe = time.monotonic()    # tras un error también se espera un intervalo
+                res = sondeo_libreview.vuelta(con, lv, escritor)
             if res["accion"] == "sincronizado":
-                log.info("informe: %s dosis nuevas, %s horas con varias inyecciones, %s enviadas a Nightscout",
-                         res["dosis"]["insertadas"], res["dosis"].get("horas_ambiguas", 0),
-                         res["nightscout"].get("enviadas", 0))
+                log.info("lectura: %s dosis nuevas, %s horas con varias inyecciones, %s cambios para revisar, "
+                         "%s enviadas a Nightscout", res["dosis"]["insertadas"], res["dosis"].get("horas_ambiguas", 0),
+                         res.get("cambios", 0), res["nightscout"].get("enviadas", 0))
         except Exception as e:   # base caída o fallo inesperado: se registra y se sigue
             log.error("vuelta fallida: %s", e)
-            ultimo_informe = time.monotonic()
         espera = float(aj.intervalo_pluma_s)
         while espera > 0 and not parar["si"]:
             time.sleep(min(1.0, espera))

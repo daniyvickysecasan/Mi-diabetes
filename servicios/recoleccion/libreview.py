@@ -24,7 +24,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -336,10 +336,15 @@ def extraer_datos(html: str) -> dict:
     raise ErrorLibreView("No se pudieron leer los datos del informe")
 
 
-def _hora_local(epoch: float, zona: ZoneInfo) -> datetime:
-    """LibreView da la hora local del dispositivo como si fuera UTC."""
-    ingenua = datetime.fromtimestamp(float(epoch), tz=timezone.utc).replace(tzinfo=None)
-    return ingenua.replace(tzinfo=zona)
+def _local_ingenua(epoch: float) -> datetime:
+    """LibreView da la hora local de la pluma contada como si fuera UTC: se quita la zona."""
+    return datetime.fromtimestamp(float(epoch), tz=timezone.utc).replace(tzinfo=None)
+
+
+def id_informe(serie_pluma: str | None, epoch: float) -> str:
+    """Id estable de una inyección del informe: serie + hora, sin las unidades (si LibreView
+    corrige el total de la hora, sigue siendo la misma inyección)."""
+    return hashlib.sha256(f"{serie_pluma or ''}|{int(epoch)}".encode()).hexdigest()[:16]
 
 
 def _unidades_hora(h: dict) -> Decimal | None:
@@ -355,30 +360,54 @@ def _unidades_hora(h: dict) -> Decimal | None:
 class Lectura:
     dosis: list[DosisPluma]
     horas_ambiguas: list[dict]           # {hora, inyecciones, unidades_total}
+    horas: dict = field(default_factory=dict)   # hora UTC → {inyecciones, unidades}: todas las horas cerradas
+    desde: datetime | None = None        # lo que cubre el informe (UTC), para ver qué ha desaparecido
+    hasta: datetime | None = None
     sin_unidades: int = 0                # horas con inyección pero sin unidades legibles
+    avisos_hora: list[str] = field(default_factory=list)
 
 
-def dosis_del_informe(datos: dict, zona: ZoneInfo, serie_pluma: str | None = None) -> Lectura:
-    """Una DosisPluma por cada hora con exactamente una inyección; las demás, aparte."""
-    dosis, ambiguas, sin_unidades = [], [], 0
+def dosis_del_informe(datos: dict, zona: ZoneInfo, serie_pluma: str | None = None,
+                      ahora: datetime | None = None) -> Lectura:
+    """Una DosisPluma por cada hora cerrada con exactamente una inyección; las de varias, aparte.
+    La hora en curso no se usa hasta que se cierre (podría llegar otra inyección en esa hora)."""
+    from servicios.recoleccion.csv_libreview import a_utc   # maneja el cambio de hora
+    ahora = ahora or datetime.now(timezone.utc)
+    dosis, ambiguas, horas_vistas, avisos, sin_unidades = [], [], {}, [], 0
+    inicios = []
     for dia in datos.get("Days") or []:
+        if dia.get("Date") is not None:
+            inicios.append(a_utc(_local_ingenua(dia["Date"]).replace(hour=0, minute=0), zona)[0])
         horas = {h.get("Hour"): h for h in dia.get("Hours") or []}
-        por_hora: dict[int, list[datetime]] = {}
+        por_hora: dict[int, list[tuple[datetime, float]]] = {}
         for ts in dia.get("RapidActingInsulinLogged") or []:
-            local = _hora_local(ts, zona)
-            por_hora.setdefault(local.hour, []).append(local)
+            local = _local_ingenua(ts)
+            por_hora.setdefault(local.hour, []).append((local, ts))
         for hora, lista in sorted(por_hora.items()):
-            h = horas.get(hora) or {}
-            u = _unidades_hora(h)
+            lista.sort()
+            inicio_local = lista[0][0].replace(minute=0, second=0, microsecond=0)
+            inicio = a_utc(inicio_local, zona)[0]
+            if a_utc(inicio_local + timedelta(hours=1), zona)[0] > ahora:
+                continue                                         # hora aún abierta
+            u = _unidades_hora(horas.get(hora) or {})
+            utcs = []
+            for local, _ in lista:
+                t, aviso = a_utc(local, zona)
+                utcs.append(t)
+                if aviso:
+                    avisos.append(f"{local:%d-%m-%Y %H:%M}: {aviso}")
+            horas_vistas[inicio] = {"inyecciones": utcs, "unidades": u}
             if u is None:
                 sin_unidades += 1
                 continue
             if len(lista) == 1:
-                t = lista[0]
-                dosis.append(DosisPluma(ts=t.astimezone(timezone.utc), unidades=u, serie_pluma=serie_pluma,
-                                        bruto={"hora_local": t.isoformat(), "fuente": "registro_diario"}))
+                local, epoch = lista[0]
+                dosis.append(DosisPluma(ts=utcs[0], unidades=u, serie_pluma=serie_pluma,
+                                        id_libreview=id_informe(serie_pluma, epoch),
+                                        bruto={"hora_local": local.isoformat(), "fuente": "registro_diario"}))
             else:
-                inicio = lista[0].replace(minute=0, second=0, microsecond=0)
-                ambiguas.append({"hora": inicio.astimezone(timezone.utc), "unidades_total": u,
-                                 "inyecciones": [x.astimezone(timezone.utc) for x in sorted(lista)]})
-    return Lectura(dosis=dosis, horas_ambiguas=ambiguas, sin_unidades=sin_unidades)
+                ambiguas.append({"hora": inicio, "unidades_total": u, "inyecciones": utcs})
+    hasta = ahora.replace(minute=0, second=0, microsecond=0)
+    return Lectura(dosis=dosis, horas_ambiguas=ambiguas, horas=horas_vistas,
+                   desde=min(inicios) if inicios else None, hasta=hasta,
+                   sin_unidades=sin_unidades, avisos_hora=avisos)

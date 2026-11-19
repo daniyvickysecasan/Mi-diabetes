@@ -22,7 +22,7 @@ URL_ADMIN = os.environ.get("TEST_DATABASE_URL")
 TOKEN = "token-lectura-prueba"
 TABLAS = ["decisiones", "sugerencias", "dosis", "eventos_chat", "comidas", "hidratos_correccion",
           "config_tresiba", "versiones_parametros", "glucosa", "tratamientos_nightscout",
-          "ejecuciones_recoleccion", "huecos", "llegadas_pluma", "envios_nightscout", "horas_pluma_libreview", "sesiones", "retos_webauthn", "credenciales_passkey"]
+          "ejecuciones_recoleccion", "huecos", "llegadas_pluma", "envios_nightscout", "horas_pluma_libreview", "solicitudes_lectura_pluma", "cambios_pluma_libreview", "sesiones", "retos_webauthn", "credenciales_passkey"]
 
 
 @pytest.fixture(scope="session")

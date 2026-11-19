@@ -80,3 +80,26 @@ CREATE TABLE estado_libreview (
     error                 text
 );
 INSERT INTO estado_libreview DEFAULT VALUES;
+
+-- Lectura bajo demanda: la API (botón de la app o, en la fase 3, el cálculo de una dosis) inserta una
+-- fila; el recolector la ve en segundos, lee LibreView, concilia y la cierra.
+CREATE TABLE solicitudes_lectura_pluma (
+    id          bigserial PRIMARY KEY,
+    pedida_en   timestamptz NOT NULL DEFAULT now(),
+    atendida_en timestamptz,
+    resultado   text CHECK (resultado IN ('ok', 'error', 'sin_sesion')),
+    detalle     text,
+    CHECK ((atendida_en IS NULL) = (resultado IS NULL))
+);
+CREATE INDEX solicitudes_lectura_pluma_abiertas ON solicitudes_lectura_pluma (pedida_en) WHERE atendida_en IS NULL;
+
+-- Dosis ya guardadas desde el informe que una lectura posterior contradice (cambia el total de su
+-- hora, aparece otra inyección en esa hora o desaparece: p. ej. un cebado marcado después).
+-- La dosis NO se toca: solo se anota para revisarla.
+CREATE TABLE cambios_pluma_libreview (
+    dosis_id   bigint NOT NULL REFERENCES dosis (id) ON DELETE CASCADE,
+    motivo     text NOT NULL CHECK (motivo IN ('total_distinto', 'otra_inyeccion', 'desaparecida')),
+    detalle    jsonb NOT NULL DEFAULT '{}',
+    visto_en   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (dosis_id, motivo)
+);

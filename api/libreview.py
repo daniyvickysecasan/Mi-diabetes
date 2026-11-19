@@ -3,8 +3,6 @@
 La API no habla con LibreView: solo deja la petición en la base (estado_libreview) y el recolector
 de la pluma la atiende en su siguiente vuelta (cada INTERVALO_PLUMA_S).
 """
-from datetime import timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -16,7 +14,7 @@ SESION = Depends(requiere_sesion, scope="function")
 
 
 def _para_la_app(request: Request, con) -> dict:
-    return E.para_la_app(con, intervalo=timedelta(seconds=request.app.state.ajustes.intervalo_informe_s))
+    return E.para_la_app(con)
 
 
 class Codigo(BaseModel):
@@ -35,6 +33,22 @@ def pedir_sms(request: Request, con=SESION):
     except E.EstadoNoPermite as e:
         raise HTTPException(409, str(e)) from None
     return _para_la_app(request, con)
+
+
+@router.post("/actualizar")
+def actualizar(request: Request, con=SESION):
+    """Pide leer ya las dosis de la pluma en LibreView. Devuelve el id para consultar cómo acabó."""
+    s = E.pedir_lectura(con)
+    return {"solicitud": s["id"], **_para_la_app(request, con)}
+
+
+@router.get("/actualizar/{id_}")
+def ver_actualizacion(id_: int, con=SESION):
+    s = E.solicitud(con, id_)
+    if s is None:
+        raise HTTPException(404, "No existe esa solicitud")
+    return {"id": s["id"], "pedida_en": s["pedida_en"], "atendida_en": s["atendida_en"],
+            "resultado": s["resultado"], "detalle": s["detalle"]}
 
 
 @router.post("/codigo")

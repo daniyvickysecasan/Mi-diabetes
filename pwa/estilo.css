@@ -26,6 +26,7 @@ h1 { margin: 0 0 8px; } h2 { font-size: 1rem; margin: 0 0 8px; }
          color: var(--bajo); max-width: 420px; }
 .aviso-pluma { background: rgba(245, 158, 11, .15); color: var(--alto); }
 #aviso-libreview p { margin: 0 0 8px; }
+.lv-actualizar { text-align: center; margin: 8px 0 0; color: var(--suave); font-size: .9rem; }
 #aviso-libreview form { display: grid; gap: 8px; }
 #aviso-libreview input { text-align: center; font-size: 1.4rem; letter-spacing: .2em; }
 svg { width: 100%; height: auto; display: block; }

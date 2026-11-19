@@ -254,11 +254,17 @@ async function registrar(ruta, cuerpo, texto) {
   refrescarVista();
 }
 
-// ------------------------------------------------------------------ LibreView (código del SMS)
-// La app solo deja la petición en la base; el recolector la atiende en menos de un minuto.
-let sondeoLv = null, esperandoDesde = 0;
+// ------------------------------------------------------------------ LibreView (lectura y código del SMS)
+// LibreView solo se lee cuando se pide. La app deja la petición en la base y el recolector la
+// atiende en unos segundos.
+let sondeoLv = null, esperandoDesde = 0, antesEsperando = false;
 
 function pintarLibreView(e) {
+  $("lv-ultimo").textContent = e.ultimo_ok ? `· leída a las ${hora(e.ultimo_ok)}` : "";
+  $("lv-actualizar").disabled = e.accion === "esperar";
+  const acabaDeLeer = antesEsperando && e.accion !== "esperar";
+  antesEsperando = e.accion === "esperar";
+  if (acabaDeLeer && e.estado === "ok") { refrescar(); }
   const caja = $("aviso-libreview");
   caja.classList.toggle("oculto", !e.mensaje);
   $("lv-texto").textContent = e.mensaje || "";
@@ -290,6 +296,7 @@ async function accionLibreView(ruta, cuerpo) {
 }
 
 $("lv-sms").addEventListener("click", () => accionLibreView("/api/libreview/sms", {}));
+$("lv-actualizar").addEventListener("click", () => accionLibreView("/api/libreview/actualizar", {}));
 $("lv-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const codigo = $("lv-codigo").value.replace(/\D/g, "");

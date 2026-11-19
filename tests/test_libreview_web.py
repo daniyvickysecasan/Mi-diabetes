@@ -38,6 +38,12 @@ def lv(ahora):
     ])
 
 
+def _leer(con, c, **kw):
+    """Como la app: pide una lectura y el recolector da una vuelta."""
+    E.pedir_lectura(con)
+    return vuelta(con, c, **kw)
+
+
 def _cliente(lv, ruta):
     return ClienteLibreView("yo@ejemplo.test", CLAVE, ruta_sesion=ruta, espera_sondeo_s=0,
                             cliente=httpx.Client(transport=lv.transporte()))
@@ -104,19 +110,19 @@ def test_cuerpo_del_informe_como_la_web(lv, ruta):
 def test_flujo_completo_sms_desde_la_app(con, lv, ruta, ahora):
     c = _cliente(lv, ruta)
     # 1. Sin dispositivo de confianza LibreView pide el SMS: se avisa, pero no se manda solo.
-    assert vuelta(con, c, ahora=ahora)["accion"] == "necesita_codigo"
+    assert _leer(con, c, ahora=ahora)["accion"] == "necesita_codigo"
     assert E.para_la_app(con, ahora)["accion"] == "pedir_sms" and lv.sms_enviados == 0
-    assert vuelta(con, c, ahora=ahora)["accion"] == "esperando_a_daniel" and lv.sms_enviados == 0
+    assert _leer(con, c, ahora=ahora)["accion"] == "esperando_a_daniel" and lv.sms_enviados == 0
     # 2. Daniel pulsa "Enviarme el SMS": el recolector lo manda una sola vez.
     E.pedir_sms(con)
-    assert vuelta(con, c, ahora=ahora)["accion"] == "sms_enviado"
-    vuelta(con, c, ahora=ahora)
+    assert _leer(con, c, ahora=ahora)["accion"] == "sms_enviado"
+    _leer(con, c, ahora=ahora)
     assert lv.sms_enviados == 1
     app = E.para_la_app(con, ahora)
     assert app["accion"] == "codigo" and "0123" in app["mensaje"] and "600000" not in app["mensaje"]
     # 3. Escribe el código: el recolector entra, lo borra y lee las dosis.
     E.dar_codigo(con, " 123 456 ")
-    r = vuelta(con, c, ahora=ahora)
+    r = _leer(con, c, ahora=ahora)
     assert r["accion"] == "sincronizado" and r["dosis"]["insertadas"] == 2
     e = E.leer(con)
     assert e["estado"] == "ok" and e["codigo"] is None and e["ultimo_ok"] == ahora
@@ -133,11 +139,11 @@ def test_flujo_completo_sms_desde_la_app(con, lv, ruta, ahora):
 
 def test_tras_reiniciar_entra_sin_sms_y_no_duplica(con, lv, ruta, ahora):
     c = _cliente(lv, ruta)
-    vuelta(con, c, ahora=ahora); E.pedir_sms(con); vuelta(con, c, ahora=ahora)
-    E.dar_codigo(con, "123456"); vuelta(con, c, ahora=ahora)
+    _leer(con, c, ahora=ahora); E.pedir_sms(con); _leer(con, c, ahora=ahora)
+    E.dar_codigo(con, "123456"); _leer(con, c, ahora=ahora)
     lv.tokens.clear()                                   # el token web caducó en LibreView
     c2 = _cliente(lv, ruta)                             # recolector reiniciado: lee la sesión del disco
-    r = vuelta(con, c2, ahora=ahora + timedelta(minutes=10))
+    r = _leer(con, c2, ahora=ahora + timedelta(minutes=10))
     assert r["accion"] == "sincronizado" and r["dosis"]["insertadas"] == 0 and r["dosis"]["ya_estaban"] == 2
     assert lv.sms_enviados == 1
     assert con.execute("SELECT count(*) AS n FROM dosis").fetchone()["n"] == 2
@@ -147,21 +153,21 @@ def test_dos_inyecciones_en_una_hora_quedan_aparte(con, ruta, ahora):
     t = _local_hace(ahora, hours=3).replace(minute=5)
     lv = LibreViewSimulado(password=CLAVE, inyecciones=[(t, 2), (t.replace(minute=40), 3)])
     c = _cliente(lv, ruta)
-    vuelta(con, c, ahora=ahora); E.pedir_sms(con); vuelta(con, c, ahora=ahora)
+    _leer(con, c, ahora=ahora); E.pedir_sms(con); _leer(con, c, ahora=ahora)
     E.dar_codigo(con, "123456")
-    r = vuelta(con, c, ahora=ahora)
+    r = _leer(con, c, ahora=ahora)
     assert r["dosis"]["insertadas"] == 0 and r["dosis"]["horas_ambiguas"] == 1
     h = con.execute("SELECT * FROM horas_pluma_libreview").fetchone()
     assert h["unidades_total"] == Decimal("5.00") and len(h["inyecciones"]) == 2
-    vuelta(con, c, ahora=ahora)                         # releer actualiza, no duplica
+    _leer(con, c, ahora=ahora)                         # releer actualiza, no duplica
     assert con.execute("SELECT count(*) AS n FROM horas_pluma_libreview").fetchone()["n"] == 1
 
 
 def test_codigo_equivocado_vuelve_a_pedir_sms(con, lv, ruta, ahora):
     c = _cliente(lv, ruta)
-    vuelta(con, c, ahora=ahora); E.pedir_sms(con); vuelta(con, c, ahora=ahora)
+    _leer(con, c, ahora=ahora); E.pedir_sms(con); _leer(con, c, ahora=ahora)
     E.dar_codigo(con, "999999")
-    assert vuelta(con, c, ahora=ahora)["accion"] == "codigo_rechazado"
+    assert _leer(con, c, ahora=ahora)["accion"] == "codigo_rechazado"
     e = E.leer(con)
     assert e["estado"] == "necesita_codigo" and e["codigo"] is None and "código" in e["error"]
     assert con.execute("SELECT count(*) AS n FROM dosis").fetchone()["n"] == 0
@@ -169,44 +175,106 @@ def test_codigo_equivocado_vuelve_a_pedir_sms(con, lv, ruta, ahora):
 
 def test_libreview_caido_queda_en_el_estado_sin_secretos(con, lv, ruta, ahora):
     c = _cliente(lv, ruta)
-    vuelta(con, c, ahora=ahora); E.pedir_sms(con); vuelta(con, c, ahora=ahora)
-    E.dar_codigo(con, "123456"); vuelta(con, c, ahora=ahora)
+    _leer(con, c, ahora=ahora); E.pedir_sms(con); _leer(con, c, ahora=ahora)
+    E.dar_codigo(con, "123456"); _leer(con, c, ahora=ahora)
     lv.fallar_informe = True
-    r = vuelta(con, c, ahora=ahora + timedelta(minutes=10))
+    r = _leer(con, c, ahora=ahora + timedelta(minutes=10))
     assert r["accion"] == "error"
     e = E.leer(con)
     assert e["estado"] == "error" and "500" in e["error"]
     assert CLAVE not in e["error"] and "web-" not in e["error"] and "confianza-" not in e["error"]
     lv.fallar_informe = False                           # se recupera solo en la vuelta siguiente
-    assert vuelta(con, c, ahora=ahora + timedelta(minutes=20))["accion"] == "sincronizado"
+    assert _leer(con, c, ahora=ahora + timedelta(minutes=20))["accion"] == "sincronizado"
     assert E.leer(con)["estado"] == "ok"
 
 
 def test_contrasena_equivocada_no_pide_sms(con, lv, ruta, ahora):
     c = ClienteLibreView("yo@ejemplo.test", "otra", ruta_sesion=ruta,
                          cliente=httpx.Client(transport=lv.transporte()))
-    assert vuelta(con, c, ahora=ahora)["accion"] == "error"
+    assert _leer(con, c, ahora=ahora)["accion"] == "error"
     assert "contraseña" in E.leer(con)["error"] and lv.sms_enviados == 0
 
 
-def test_sin_sincronizar_no_llama_a_libreview(con, lv, ruta, ahora):
+def test_sin_lectura_pedida_no_llama_a_libreview(con, lv, ruta, ahora):
     E.poner(con, "ok", ultimo_ok=ahora)
-    assert vuelta(con, _cliente(lv, ruta), sincronizar=False, ahora=ahora)["accion"] == "nada"
+    assert vuelta(con, _cliente(lv, ruta), ahora=ahora)["accion"] == "nada"
     assert lv.peticiones == []
 
 
+def _dentro(con, c, ahora):
+    _leer(con, c, ahora=ahora); E.pedir_sms(con); vuelta(con, c, ahora=ahora)
+    E.dar_codigo(con, "123456")
+    return vuelta(con, c, ahora=ahora)
+
+
+# ------------------------------------------------------------------ lectura bajo demanda
+def test_la_solicitud_se_cierra_con_su_resultado(con, lv, ruta, ahora):
+    c = _cliente(lv, ruta)
+    s1 = E.pedir_lectura(con)
+    vuelta(con, c, ahora=ahora)                         # LibreView pide el SMS: no hace esperar
+    assert E.solicitud(con, s1["id"])["resultado"] == "sin_sesion"
+    E.pedir_sms(con); vuelta(con, c, ahora=ahora); E.dar_codigo(con, "123456"); vuelta(con, c, ahora=ahora)
+    s2, s3 = E.pedir_lectura(con), E.pedir_lectura(con)   # dos a la vez: una sola lectura
+    n = lv.informes
+    vuelta(con, c, ahora=ahora)
+    assert lv.informes == n + 1
+    assert {E.solicitud(con, s["id"])["resultado"] for s in (s2, s3)} == {"ok"}
+    lv.fallar_informe = True
+    s4 = E.pedir_lectura(con)
+    vuelta(con, c, ahora=ahora)
+    f = E.solicitud(con, s4["id"])
+    assert f["resultado"] == "error" and f["atendida_en"] is not None and CLAVE not in f["detalle"]
+
+
+def test_la_hora_en_curso_espera_a_cerrarse(con, ruta):
+    ahora = datetime.now(timezone.utc).replace(minute=30, second=0, microsecond=0)
+    en_curso = ahora.astimezone(MADRID).replace(minute=10, tzinfo=None)
+    lv = LibreViewSimulado(password=CLAVE, inyecciones=[(en_curso - timedelta(hours=2), 4), (en_curso, 3)])
+    c = _cliente(lv, ruta)
+    r = _dentro(con, c, ahora)
+    assert r["dosis"]["insertadas"] == 1                # la de las :10 de esta hora, todavía no
+    r = _leer(con, c, ahora=ahora + timedelta(hours=1))
+    assert r["dosis"]["insertadas"] == 1
+
+
+def test_id_no_depende_de_las_unidades(con, lv, ruta, ahora):
+    c = _cliente(lv, ruta)
+    _dentro(con, c, ahora)
+    lv.inyecciones = [(t, u + 1) for t, u in lv.inyecciones]   # LibreView corrige los totales
+    r = _leer(con, c, ahora=ahora)
+    assert r["dosis"]["insertadas"] == 0 and r["cambios"] == 2
+    # La dosis guardada no se toca: solo se anota para revisar.
+    assert [f["unidades"] for f in con.execute("SELECT unidades FROM dosis ORDER BY ts")] == [Decimal("6.00"), Decimal("2.50")]
+    assert {f["motivo"] for f in con.execute("SELECT motivo FROM cambios_pluma_libreview")} == {"total_distinto"}
+
+
+def test_cebado_marcado_despues_y_otra_inyeccion_solo_se_anotan(con, lv, ruta, ahora):
+    c = _cliente(lv, ruta)
+    _dentro(con, c, ahora)
+    (t1, _), (t2, u2) = lv.inyecciones
+    lv.inyecciones = [(t2, u2), (t2.replace(minute=(t2.minute + 30) % 60) if t2.minute < 30 else t2.replace(minute=0), 1)]
+    r = _leer(con, c, ahora=ahora)
+    assert r["dosis"]["insertadas"] == 0                # la segunda de esa hora no se deduce restando
+    motivos = {f["motivo"] for f in con.execute("SELECT motivo FROM cambios_pluma_libreview")}
+    assert motivos == {"desaparecida", "otra_inyeccion"}
+    assert con.execute("SELECT count(*) AS n FROM dosis").fetchone()["n"] == 2
+    assert _leer(con, c, ahora=ahora)["cambios"] == 0   # ya anotados: no se repiten
+
+
 # ------------------------------------------------------------------ estado para la app
-def test_sms_caducado_y_sondeo_caido(con, ahora):
+def test_sms_caducado_y_lector_parado(con, ahora):
     E.poner(con, "esperando_codigo")                    # cambiado_en = now() de la base
     assert E.para_la_app(con)["accion"] == "codigo"
     assert E.para_la_app(con, datetime.now(timezone.utc) + timedelta(minutes=11))["accion"] == "pedir_sms"
-    E.poner(con, "ok", ultimo_ok=ahora - timedelta(hours=13))  # una lectura perdida (cada 12 h): aún no
-    assert E.para_la_app(con, datetime.now(timezone.utc))["mensaje"] is None
-    E.poner(con, "ok", ultimo_ok=ahora - timedelta(hours=25))  # dos seguidas: avisar
-    a = E.para_la_app(con, datetime.now(timezone.utc))
-    assert a["estado"] == "caido" and "25 h" in a["mensaje"]
-    assert E.para_la_app(con, datetime.now(timezone.utc), intervalo=timedelta(hours=24))["mensaje"] is None
-    E.poner(con, "ok", ultimo_ok=datetime.now(timezone.utc))
+    E.poner(con, "error", error="HTTP 500")
+    E.pedir_lectura(con)
+    a = E.para_la_app(con)
+    assert a["accion"] == "esperar" and a["leyendo"] is True       # la nueva lectura va antes que el error viejo
+    a = E.para_la_app(con, datetime.now(timezone.utc) + timedelta(minutes=3))
+    assert a["accion"] is None and "500" in a["mensaje"]
+    E.poner(con, "ok")
+    assert E.para_la_app(con, datetime.now(timezone.utc) + timedelta(minutes=3))["estado"] == "sin_lector"
+    E.cerrar_solicitudes(con, "ok")
     assert E.para_la_app(con)["mensaje"] is None
 
 
@@ -232,6 +300,7 @@ def test_api_exige_sesion(con, ajustes):
     c = TestClient(crear_app(ajustes), base_url=ORIGEN)
     assert c.get("/api/libreview/estado").status_code == 401
     assert c.post("/api/libreview/sms").status_code == 401
+    assert c.post("/api/libreview/actualizar").status_code == 401
     assert c.post("/api/libreview/codigo", json={"codigo": "123456"}).status_code == 401
 
 
@@ -246,3 +315,13 @@ def test_api_sms_y_codigo(cli, con):
     assert r.status_code == 200 and r.json()["estado"] == "codigo_recibido" and "654321" not in r.text
     assert E.leer(con)["codigo"] == "654321"
     assert cli.post("/api/libreview/sms").status_code == 409            # ya está comprobando
+
+
+def test_api_actualizar(cli, con):
+    E.poner(con, "ok")
+    r = cli.post("/api/libreview/actualizar").json()
+    assert r["accion"] == "esperar" and r["leyendo"] is True
+    assert cli.get(f"/api/libreview/actualizar/{r['solicitud']}").json()["resultado"] is None
+    E.cerrar_solicitudes(con, "ok")
+    assert cli.get(f"/api/libreview/actualizar/{r['solicitud']}").json()["resultado"] == "ok"
+    assert cli.get("/api/libreview/actualizar/999").status_code == 404
