@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 
 PATRON_CODIGO = re.compile(r"^[0-9]{4,8}$")
 CADUCIDAD_CODIGO = timedelta(minutes=10)     # sin código en este tiempo: hay que pedir otro SMS
-INTERVALO_INFORME = timedelta(hours=4)       # cada cuánto lee LibreView el recolector (por defecto)
+INTERVALO_INFORME = timedelta(hours=12)      # cada cuánto lee LibreView el recolector (por defecto)
 
 
 class EstadoNoPermite(ValueError):

@@ -11,6 +11,7 @@ Dos motivos, en este orden:
    su última lectura buena, no hasta ahora: así no avisa de dosis que LibreView aún no ha mirado.
 2. `sin_lecturas`: la última dosis que llegó de la pluma es más antigua que el umbral (o nunca ha
    llegado ninguna). Puede ser que no te hayas inyectado, por eso el texto dice "si te has inyectado".
+   Con LibreView activo también se cuenta hasta su última lectura buena.
 """
 from datetime import datetime, timedelta
 
@@ -47,7 +48,7 @@ def evaluar(ahora: datetime, ultima_pluma: datetime | None, pendientes_app: list
     if ultima_pluma is None:
         return {**base, "motivo": "sin_lecturas", "pendientes": 0,
                 "texto": "Aún no ha llegado ninguna dosis de la pluma. Léela con LibreLink."}
-    if ahora - ultima_pluma >= timedelta(hours=umbral_horas):
+    if corte - ultima_pluma >= timedelta(hours=umbral_horas):
         return {**base, "motivo": "sin_lecturas", "pendientes": 0,
                 "texto": f"Hace {_horas(ahora - ultima_pluma)} que no llega ninguna dosis de la pluma. "
                          "Si te has inyectado, léela con LibreLink."}

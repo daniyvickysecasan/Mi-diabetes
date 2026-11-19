@@ -200,12 +200,12 @@ def test_sms_caducado_y_sondeo_caido(con, ahora):
     E.poner(con, "esperando_codigo")                    # cambiado_en = now() de la base
     assert E.para_la_app(con)["accion"] == "codigo"
     assert E.para_la_app(con, datetime.now(timezone.utc) + timedelta(minutes=11))["accion"] == "pedir_sms"
-    E.poner(con, "ok", ultimo_ok=ahora - timedelta(hours=5))   # una lectura perdida (cada 4 h): aún no
+    E.poner(con, "ok", ultimo_ok=ahora - timedelta(hours=13))  # una lectura perdida (cada 12 h): aún no
     assert E.para_la_app(con, datetime.now(timezone.utc))["mensaje"] is None
-    E.poner(con, "ok", ultimo_ok=ahora - timedelta(hours=9))   # dos seguidas: avisar
+    E.poner(con, "ok", ultimo_ok=ahora - timedelta(hours=25))  # dos seguidas: avisar
     a = E.para_la_app(con, datetime.now(timezone.utc))
-    assert a["estado"] == "caido" and "9 h" in a["mensaje"]
-    assert E.para_la_app(con, datetime.now(timezone.utc), intervalo=timedelta(hours=8))["mensaje"] is None
+    assert a["estado"] == "caido" and "25 h" in a["mensaje"]
+    assert E.para_la_app(con, datetime.now(timezone.utc), intervalo=timedelta(hours=24))["mensaje"] is None
     E.poner(con, "ok", ultimo_ok=datetime.now(timezone.utc))
     assert E.para_la_app(con)["mensaje"] is None
 

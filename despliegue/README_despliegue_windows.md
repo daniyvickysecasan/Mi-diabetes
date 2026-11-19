@@ -129,7 +129,7 @@ Compara TIR, GMI y CV con el informe del mismo periodo (criterio: TIR a menos de
 
 ## Fase 2: dosis de la pluma leídas solas de LibreView
 
-El recolector `recolector-pluma` pide cada 4 horas (`INTERVALO_INFORME_S`) a la web de LibreView el informe "Registro diario",
+El recolector `recolector-pluma` pide cada 12 horas (`INTERVALO_INFORME_S`) a la web de LibreView el informe "Registro diario",
 que trae la hora y las unidades de cada inyección de la pluma (sin los cebados marcados en LibreLink).
 Es una API no oficial: si LibreView la cambia, el panel lo avisa y siguen valiendo la app y el CSV.
 

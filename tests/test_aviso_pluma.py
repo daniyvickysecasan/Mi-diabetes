@@ -103,3 +103,9 @@ def test_aviso_en_la_base_usa_la_ultima_lectura_de_libreview(con):
     assert (AP.evaluar_bd(con, ahora) or {}).get("motivo") != "dosis_sin_leer"
     con.execute("UPDATE estado_libreview SET ultimo_ok=%s", (ahora - timedelta(minutes=5),))
     assert AP.evaluar_bd(con, ahora)["motivo"] == "dosis_sin_leer"
+
+
+def test_sin_lecturas_tambien_cuenta_hasta_la_ultima_lectura():
+    # Última dosis de la pluma hace 14 h, pero LibreView se miró hace 10 h (4 h después): aún no avisa.
+    assert AP.evaluar(AHORA, h(14), [], ultima_lectura=h(10)) is None
+    assert AP.evaluar(AHORA, h(14), [], ultima_lectura=h(1))["motivo"] == "sin_lecturas"
