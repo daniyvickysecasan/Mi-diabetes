@@ -25,7 +25,7 @@ docs/                plan y traspaso
 tests/               pytest contra TimescaleDB real
 ```
 
-## Estado: fases 1 y 2
+## Estado: fases 1 y 2, fase 3 en curso
 
 | Pieza | Estado |
 |---|---|
@@ -36,6 +36,7 @@ tests/               pytest contra TimescaleDB real
 | Registro de Fiasp, hidratos de corrección y Tresiba en la PWA, con cola sin conexión | ✔ |
 | Conciliación app ↔ pluma (API y CSV de LibreView), revisión de discrepancias | ✔ |
 | Insulina activa (curva oref0 de Fiasp) y métricas de consenso (TBR/TIR/TAR, GMI, CV) | ✔ |
+| Motor de sugerencia de Fiasp (freno por hipo, acumulación, segunda inyección, incertidumbre) y parámetros con aprobación | fase 3, PR A |
 
 ## Desarrollo
 
