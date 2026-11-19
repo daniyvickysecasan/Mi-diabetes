@@ -117,12 +117,17 @@ class Informe:
 class ClienteLibreView:
     def __init__(self, email: str, password: str, region: str = "", ruta_sesion: Path | str | None = None,
                  cliente: httpx.Client | None = None, timeout: float = 60, zona: str = "Europe/Madrid",
-                 version_web: str = VERSION_WEB, espera_sondeo_s: float = 2.0):
+                 version_web: str = VERSION_WEB, espera_sondeo_s: float = 2.0,
+                 dispositivo_confianza: str | None = None):
         if not email or not password:
             raise ErrorLibreView("Faltan LIBREVIEW_EMAIL o LIBREVIEW_PASSWORD en despliegue/.env")
         self._email, self._password = email, password
         self.ruta = Path(ruta_sesion) if ruta_sesion else None
         self.sesion = Sesion.cargar(self.ruta)
+        if dispositivo_confianza:
+            # El "recordar este dispositivo" hecho en Chrome: LibreView no deja pedir el SMS a un
+            # cliente que no es un navegador, así que se reutiliza el token que dio a Chrome.
+            self.sesion.dispositivo_confianza = dispositivo_confianza.strip()
         if region and self.sesion.base == BASE:
             self.sesion.base = _base_region(region)
         self.zona = ZoneInfo(zona)
