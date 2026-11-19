@@ -106,6 +106,15 @@ def test_cuerpo_del_informe_como_la_web(lv, ruta):
     assert cuerpo["CultureCode"] == "es-ES" and pluma["serie"] == "AB"
 
 
+def test_sincronizacion_de_la_pluma_es_hora_local(lv, ruta):
+    """Visto con la cuenta real (19-11-2026): uploadDate es la hora de Madrid contada como UTC."""
+    c = _cliente(lv, ruta)
+    local_como_utc = int(datetime(2026, 11, 19, 19, 9, tzinfo=timezone.utc).timestamp())
+    _, pluma = c.cuerpo_informe({"id": "u"}, {"dataSources": {
+        "y": {"id": "p", "type": 90002, "sn": "AB", "uploadDate": local_como_utc}}}, date(2026, 11, 19))
+    assert pluma["sincronizacion"] == datetime(2026, 11, 19, 18, 9, tzinfo=timezone.utc)
+
+
 # ------------------------------------------------------------------ flujo con el SMS
 def test_flujo_completo_sms_desde_la_app(con, lv, ruta, ahora):
     c = _cliente(lv, ruta)
@@ -226,15 +235,20 @@ def test_la_solicitud_se_cierra_con_su_resultado(con, lv, ruta, ahora):
     assert f["resultado"] == "error" and f["atendida_en"] is not None and CLAVE not in f["detalle"]
 
 
-def test_la_hora_en_curso_espera_a_cerrarse(con, ruta):
+def test_la_hora_en_curso_cuenta_ya(con, ruta):
+    """19-11-2026: 2 U puestas a las 19:10 no contaban hasta las 20:00 y la insulina activa salía 0."""
     ahora = datetime.now(timezone.utc).replace(minute=30, second=0, microsecond=0)
     en_curso = ahora.astimezone(MADRID).replace(minute=10, tzinfo=None)
     lv = LibreViewSimulado(password=CLAVE, inyecciones=[(en_curso - timedelta(hours=2), 4), (en_curso, 3)])
     c = _cliente(lv, ruta)
     r = _dentro(con, c, ahora)
-    assert r["dosis"]["insertadas"] == 1                # la de las :10 de esta hora, todavía no
-    r = _leer(con, c, ahora=ahora + timedelta(hours=1))
-    assert r["dosis"]["insertadas"] == 1
+    assert r["dosis"]["insertadas"] == 2                # también la de las :10 de esta hora
+    # Otra inyección en esa misma hora: la guardada no se toca, se anota para revisar.
+    lv.inyecciones = lv.inyecciones + [(en_curso + timedelta(minutes=15), 1)]
+    r = _leer(con, c, ahora=ahora + timedelta(minutes=20))
+    assert r["dosis"]["insertadas"] == 0 and r["cambios"] == 1
+    assert {f["motivo"] for f in con.execute("SELECT motivo FROM cambios_pluma_libreview")} == {"otra_inyeccion"}
+    assert [float(f["unidades"]) for f in con.execute("SELECT unidades FROM dosis ORDER BY ts")] == [4.0, 3.0]
 
 
 def test_id_no_depende_de_las_unidades(con, lv, ruta, ahora):

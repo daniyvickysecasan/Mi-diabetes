@@ -111,4 +111,6 @@ select { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border:
 .decidir button.primario { border: 0; }
 .modificar { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 8px; }
 .modificar button { width: auto; }
-#s-apuntadas { width: 100%; margin-top: 8px; }
+.confirmar { margin-top: 10px; padding: 12px; border-radius: 12px; background: rgba(245, 158, 11, .15); }
+.confirmar p { margin: 0 0 10px; }
+.confirmar button { width: 100%; }

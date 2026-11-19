@@ -51,7 +51,8 @@
       <div class="rapidos">
         <button class="primario" data-ir="dosis" data-foco="s-hc">Calcular dosis</button>
         <button class="secundario" data-ir="registrar" data-foco="u-fiasp">+ Fiasp</button>
-        <button class="secundario ancho" data-ir="registrar" data-foco="hc-gramos">+ Hidratos de corrección</button>
+        <button class="secundario" id="btn-correccion" type="button">¿Cuánto me pongo ahora?</button>
+        <button class="secundario" data-ir="registrar" data-foco="hc-gramos">+ Hidratos de corrección</button>
       </div>
 
       <div id="aviso-pluma" class="aviso aviso-pluma oculto" role="status"></div>
@@ -120,7 +121,13 @@
         </div>
         <button class="primario" type="submit" id="s-calcular">Leer la pluma y calcular</button>
         <p id="s-estado" class="suave pequeno" role="status"></p>
-        <button id="s-apuntadas" type="button" class="secundario oculto">Mis dosis están todas apuntadas: calcular igualmente</button>
+        <div id="s-confirmar" class="confirmar oculto" role="alertdialog" aria-labelledby="s-pregunta">
+          <p id="s-pregunta" class="fuerte"></p>
+          <div class="franja">
+            <button id="s-no" type="button" class="primario">No, calcular</button>
+            <button id="s-si" type="button" class="secundario">Sí, apuntarla</button>
+          </div>
+        </div>
       </form>
 
       <section id="s-resultado" class="tarjeta oculto" aria-live="polite"></section>

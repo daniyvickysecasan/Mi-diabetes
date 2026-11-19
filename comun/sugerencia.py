@@ -90,6 +90,8 @@ class Entrada:
     proteina_g: float = 0.0
     hidratos_correccion_recientes_g: float = 0.0
     avisos_externos: tuple[str, ...] = field(default_factory=tuple)
+    lectura_ok: bool = False                # la última lectura de LibreView terminó bien
+    sincronizacion_pluma: datetime | None = None   # última vez que la pluma pasó sus datos a LibreLink
 
 
 def abajo(u: float, paso: float) -> float:
@@ -109,7 +111,10 @@ def motivos_freno(e: Entrada, lim: Limites = LIMITES) -> list[str]:
     if e.version_parametros_id is None or not e.ratio_g_u or not e.sensibilidad_mgdl_u:
         m.append("sin_parametros")
     if e.estado_pluma == "no_leida":
-        m.append("pluma_sin_leer")
+        # Leer LibreView no basta: la pluma solo sube sus datos cuando se acerca a LibreLink, así que
+        # una inyección posterior a esa sincronización no está (19-11-2026). Daniel debe confirmar
+        # que no hay ninguna sin apuntar.
+        m.append("pluma_sin_confirmar" if e.lectura_ok else "pluma_sin_leer")
     if e.glucosa_mgdl is None or e.glucosa_ts is None:
         m.append("sin_glucosa")
         return m
@@ -130,6 +135,7 @@ def motivos_freno(e: Entrada, lim: Limites = LIMITES) -> list[str]:
 TEXTO_FRENO = {
     "sin_parametros": "No hay parámetros aprobados (ratio y sensibilidad).",
     "pluma_sin_leer": "No se han podido leer las dosis de la pluma: léela o apunta las dosis que falten.",
+    "pluma_sin_confirmar": "Confirma que no te has puesto Fiasp sin apuntar desde que la pluma pasó por LibreLink.",
     "sin_glucosa": "No hay lectura de glucosa.",
     "glucosa_antigua": "La última lectura de glucosa tiene más de 15 min.",
     "glucosa_baja": "Glucosa por debajo de 80 mg/dL: trata la hipo primero.",
@@ -180,6 +186,9 @@ def calcular(e: Entrada, lim: Limites = LIMITES) -> dict:
         avisos.append("Hay dosis recientes sin conciliar con la pluma: la insulina activa puede no ser exacta.")
     if e.estado_pluma == "confirmada_a_mano":
         avisos.append("La pluma no se ha leído: cuentan solo las dosis apuntadas.")
+    if e.sincronizacion_pluma is not None:
+        avisos.append(f"La pluma pasó por LibreLink a las {e.sincronizacion_pluma.astimezone(ZONA):%H:%M} "
+                      f"del {e.sincronizacion_pluma.astimezone(ZONA):%d-%m}: lo que te pusieras después solo cuenta si está apuntado.")
     if e.hidratos_correccion_recientes_g > 0:
         avisos.append(f"Tomaste {e.hidratos_correccion_recientes_g:g} g de hidratos de corrección hace menos de "
                       f"{lim.hidratos_correccion_aviso_min} min.")

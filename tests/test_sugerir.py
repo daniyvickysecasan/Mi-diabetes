@@ -77,7 +77,7 @@ def test_sugerencia_completa_y_guardada(con, ahora):
     _glucosa(con, ahora, 150)
     con.execute("""INSERT INTO dosis (ts, unidades, insulina, origen, estado_conciliacion)
                    VALUES (%s, 2, 'fiasp', 'pluma_libreview', 'solo_pluma')""", (ahora - timedelta(hours=4),))
-    s = SG.sugerir(con, ahora=ahora, hidratos_g=60, grasa_g=20, proteina_g=25, solicitud_lectura_id=_lectura_ok(con))
+    s = SG.sugerir(con, ahora=ahora, hidratos_g=60, grasa_g=20, proteina_g=25, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     assert s["estado_pluma"] == "leida" and not s["bloqueada"]
     assert 0 < float(s["insulina_activa_u"]) < 0.5
     assert float(s["u_inmediata"]) == 6.5                     # 6 + 1 − ~0,2 = 6,8 → 6,5
@@ -89,7 +89,7 @@ def test_sugerencia_completa_y_guardada(con, ahora):
 
 def test_sin_parametros_queda_guardada_y_bloqueada(con, ahora):
     _glucosa(con, ahora)
-    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con))
+    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     assert s["bloqueada"] and s["u_inmediata"] is None and s["version_parametros_id"] is None
     assert "parámetros" in s["motivo_bloqueo"]
 
@@ -108,6 +108,20 @@ def test_pluma_sin_leer_bloquea_salvo_que_confirme_las_dosis(con, ahora):
     assert s["incertidumbre"]["nivel"] != "baja"
 
 
+def test_leer_la_pluma_no_basta_sin_confirmar(con, ahora):
+    """19-11-2026: 2 U puestas tras la última sincronización de la pluma no estaban en LibreView."""
+    _parametros(con)
+    _glucosa(con, ahora)
+    con.execute("UPDATE estado_libreview SET estado = 'ok', ultima_sincronizacion = %s",
+                (ahora - timedelta(minutes=35),))
+    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con))
+    assert s["bloqueada"] and s["u_inmediata"] is None and "pluma_sin_confirmar" in s["traza"]["freno"]
+    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
+    assert not s["bloqueada"] and s["estado_pluma"] == "leida"
+    assert any("LibreLink" in a for a in s["avisos"])
+    assert SG.para_la_app(s)["sincronizacion_pluma"]
+
+
 def test_lectura_en_curso_hace_esperar_y_la_vieja_no_vale(con, ahora):
     _parametros(con)
     _glucosa(con, ahora)
@@ -122,7 +136,7 @@ def test_lectura_en_curso_hace_esperar_y_la_vieja_no_vale(con, ahora):
 def test_glucosa_bajando_bloquea(con, ahora):
     _parametros(con)
     _glucosa(con, ahora, valor=110, pendiente=-1.4)
-    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con))
+    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     assert s["bloqueada"] and s["u_inmediata"] is None
 
 
@@ -133,9 +147,9 @@ def test_comida_sin_revisar_no_vale(con, ahora):
                          rango_hidratos_max_g, grasa_g, proteina_g, revisada)
                        VALUES (%s, 'foto', 55, 50, 40, 65, 10, 20, false) RETURNING id""", (ahora,)).fetchone()["id"]
     with pytest.raises(SG.PeticionNoValida):
-        SG.sugerir(con, ahora=ahora, comida_id=c, solicitud_lectura_id=_lectura_ok(con))
+        SG.sugerir(con, ahora=ahora, comida_id=c, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     con.execute("UPDATE comidas SET revisada = true WHERE id = %s", (c,))
-    s = SG.sugerir(con, ahora=ahora, comida_id=c, hidratos_g=999, solicitud_lectura_id=_lectura_ok(con))
+    s = SG.sugerir(con, ahora=ahora, comida_id=c, hidratos_g=999, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     assert float(s["hidratos_g"]) == 50 and s["comida_id"] == c      # manda la comida revisada
     assert s["incertidumbre"]["rango_u"] == [5.0, 7.5]
 
@@ -143,7 +157,7 @@ def test_comida_sin_revisar_no_vale(con, ahora):
 def test_las_sugerencias_no_se_modifican(con, ahora):
     _parametros(con)
     _glucosa(con, ahora)
-    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con))
+    s = SG.sugerir(con, ahora=ahora, hidratos_g=40, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     with pytest.raises(psycopg.errors.RaiseException):
         con.execute("UPDATE sugerencias SET u_inmediata = 10 WHERE id = %s", (s["id"],))
 
@@ -156,7 +170,7 @@ def test_segunda_inyeccion_a_su_hora(con, ahora):
                    solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     assert float(s["u_segunda"]) == 1.0
     _glucosa(con, ahora, valor=140)
-    seg = SG.segunda(con, s["id"], ahora=ahora, solicitud_lectura_id=_lectura_ok(con))
+    seg = SG.segunda(con, s["id"], ahora=ahora, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     assert seg["tipo"] == "segunda" and seg["sugerencia_origen_id"] == s["id"]
     assert float(seg["u_inmediata"]) == 1.0 and not seg["bloqueada"]
     with pytest.raises(SG.PeticionNoValida):
@@ -191,7 +205,7 @@ def test_api_exige_sesion(con, ajustes):
 def test_api_sugerencia(cli, con, ahora):
     _parametros(con)
     _glucosa(con, ahora)
-    r = cli.post("/api/sugerencias", json={"hidratos_g": 60, "solicitud_lectura_id": _lectura_ok(con)})
+    r = cli.post("/api/sugerencias", json={"hidratos_g": 60, "solicitud_lectura_id": _lectura_ok(con), "dosis_apuntadas": True})
     assert r.status_code == 200, r.text
     j = r.json()
     assert j["u_inmediata"] == 7.0 and j["incertidumbre"]["nivel"] == "media"

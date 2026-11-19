@@ -21,7 +21,7 @@ def ahora():
 def _sug(con, ahora, **kw):
     _parametros(con)
     _glucosa(con, ahora, kw.pop("glucosa", 150))
-    return SG.sugerir(con, ahora=ahora, hidratos_g=kw.pop("hidratos_g", 60), solicitud_lectura_id=_lectura_ok(con), **kw)
+    return SG.sugerir(con, ahora=ahora, hidratos_g=kw.pop("hidratos_g", 60), solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True, **kw)
 
 
 def test_hecho_crea_la_dosis_de_la_app(con, ahora):
@@ -43,7 +43,7 @@ def test_modificado_y_ignorado(con, ahora):
         D.decidir(con, s["id"], "modificado", unidades=6.3)                # pasos de 0,5
     D.decidir(con, s["id"], "modificado", unidades=6.0, ts=ahora)
     assert float(con.execute("SELECT unidades FROM dosis").fetchone()["unidades"]) == 6.0
-    s2 = SG.sugerir(con, ahora=ahora, hidratos_g=20, solicitud_lectura_id=_lectura_ok(con))
+    s2 = SG.sugerir(con, ahora=ahora, hidratos_g=20, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     r = D.decidir(con, s2["id"], "ignorado")
     assert r["decision"]["dosis_id"] is None and r["decision"]["unidades_reales"] is None
 
@@ -114,6 +114,6 @@ def test_api_marca_la_segunda_comprobada(cli, con, ahora):
     s = SG.sugerir(con, ahora=comida, ts_comida=comida, hidratos_g=60, grasa_g=20, proteina_g=25, dosis_apuntadas=True)
     assert cli.get(f"/api/sugerencias/{s['id']}").json()["segunda_comprobada_id"] is None
     _glucosa(con, ahora)
-    r = cli.post(f"/api/sugerencias/{s['id']}/segunda", json={"solicitud_lectura_id": _lectura_ok(con)})
+    r = cli.post(f"/api/sugerencias/{s['id']}/segunda", json={"solicitud_lectura_id": _lectura_ok(con), "dosis_apuntadas": True})
     assert r.status_code == 200 and r.json()["u_inmediata"] == 1.0
     assert cli.get(f"/api/sugerencias/{s['id']}").json()["segunda_comprobada_id"] == r.json()["id"]

@@ -1,6 +1,6 @@
 // Service worker: guarda solo la "carcasa" de la app para que abra sin conexión.
 // Los datos de salud (/api, /auth) NUNCA se guardan en caché.
-const CACHE = "mi-diabetes-v7";
+const CACHE = "mi-diabetes-v8";
 const CARCASA = ["/", "/index.html", "/estilo.css", "/app.js", "/manifest.webmanifest",
                  "/icono.svg", "/icono-180.png"];
 

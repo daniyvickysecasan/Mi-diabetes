@@ -325,7 +325,9 @@ class ClienteLibreView:
             "StartDates": [inicio], "DailyLogShowMinMax": False, "DailyLogShowMaxKetones": False,
         }
         pluma = plumas[0]
-        sinc = datetime.fromtimestamp(pluma["uploadDate"], tz=timezone.utc) if pluma.get("uploadDate") else None
+        from servicios.recoleccion.csv_libreview import a_utc
+        # Como las horas del informe, uploadDate es la hora LOCAL contada como si fuera UTC.
+        sinc = a_utc(_local_ingenua(pluma["uploadDate"]), self.zona)[0] if pluma.get("uploadDate") else None
         return cuerpo, {"serie": pluma.get("sn"), "sincronizacion": sinc}
 
     def informe_registro_diario(self, hoy: date | None = None, dias: int = 14, max_sondeos: int = 30) -> Informe:
@@ -417,7 +419,7 @@ def _unidades_hora(h: dict) -> Decimal | None:
 class Lectura:
     dosis: list[DosisPluma]
     horas_ambiguas: list[dict]           # {hora, inyecciones, unidades_total}
-    horas: dict = field(default_factory=dict)   # hora UTC → {inyecciones, unidades}: todas las horas cerradas
+    horas: dict = field(default_factory=dict)   # hora UTC → {inyecciones, unidades}: todas las horas, también la en curso
     desde: datetime | None = None        # lo que cubre el informe (UTC), para ver qué ha desaparecido
     hasta: datetime | None = None
     sin_unidades: int = 0                # horas con inyección pero sin unidades legibles
@@ -426,8 +428,12 @@ class Lectura:
 
 def dosis_del_informe(datos: dict, zona: ZoneInfo, serie_pluma: str | None = None,
                       ahora: datetime | None = None) -> Lectura:
-    """Una DosisPluma por cada hora cerrada con exactamente una inyección; las de varias, aparte.
-    La hora en curso no se usa hasta que se cierre (podría llegar otra inyección en esa hora)."""
+    """Una DosisPluma por cada hora con exactamente una inyección; las de varias, aparte.
+
+    La hora en curso TAMBIÉN se usa (19-11-2026): esperar a que se cerrara dejaba una inyección
+    recién puesta fuera de la insulina activa hasta una hora, y eso hace sugerir de más. Si después
+    llega otra inyección en esa misma hora, la dosis guardada no se toca: anotar_cambios la marca
+    ('otra_inyeccion') para revisarla, como con cualquier hora."""
     from servicios.recoleccion.csv_libreview import a_utc   # maneja el cambio de hora
     ahora = ahora or datetime.now(timezone.utc)
     dosis, ambiguas, horas_vistas, avisos, sin_unidades = [], [], {}, [], 0
@@ -444,8 +450,6 @@ def dosis_del_informe(datos: dict, zona: ZoneInfo, serie_pluma: str | None = Non
             lista.sort()
             inicio_local = lista[0][0].replace(minute=0, second=0, microsecond=0)
             inicio = a_utc(inicio_local, zona)[0]
-            if a_utc(inicio_local + timedelta(hours=1), zona)[0] > ahora:
-                continue                                         # hora aún abierta
             u = _unidades_hora(horas.get(hora) or {})
             utcs = []
             for local, _ in lista:
@@ -464,7 +468,7 @@ def dosis_del_informe(datos: dict, zona: ZoneInfo, serie_pluma: str | None = Non
                                         bruto={"hora_local": local.isoformat(), "fuente": "registro_diario"}))
             else:
                 ambiguas.append({"hora": inicio, "unidades_total": u, "inyecciones": utcs})
-    hasta = ahora.replace(minute=0, second=0, microsecond=0)
+    hasta = ahora
     return Lectura(dosis=dosis, horas_ambiguas=ambiguas, horas=horas_vistas,
                    desde=min(inicios) if inicios else None, hasta=hasta,
                    sin_unidades=sin_unidades, avisos_hora=avisos)

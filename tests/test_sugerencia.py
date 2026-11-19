@@ -71,6 +71,7 @@ def test_usa_el_objetivo_de_correccion_no_el_de_90():
     ({"glucosa_mgdl": None, "glucosa_ts": None}, "sin_glucosa"),
     ({"version_parametros_id": None, "ratio_g_u": None, "sensibilidad_mgdl_u": None}, "sin_parametros"),
     ({"estado_pluma": "no_leida"}, "pluma_sin_leer"),
+    ({"estado_pluma": "no_leida", "lectura_ok": True}, "pluma_sin_confirmar"),
 ])
 def test_freno_bloquea_sin_ninguna_cifra(cambios, motivo):
     r = S.calcular(entrada(grasa_g=30, proteina_g=30, **cambios))
