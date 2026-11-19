@@ -174,7 +174,7 @@ PROHIBIDO = ("servicios", "ollama", "httpx", "requests", "openai", "anthropic")
 
 
 @pytest.mark.parametrize("modulo", ["comun/sugerencia.py", "comun/sugerir.py", "comun/parametros.py",
-                                    "api/sugerencias.py"])
+                                    "comun/decisiones.py", "api/sugerencias.py"])
 def test_el_calculo_no_importa_modelos_ni_red(modulo):
     arbol = ast.parse((RAIZ / modulo).read_text())
     importados = set()

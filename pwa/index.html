@@ -46,9 +46,12 @@
         <div id="aviso" class="aviso oculto" role="alert"></div>
       </section>
 
+      <a id="aviso-segunda" class="aviso aviso-pluma enlace-bloque oculto" href="#dosis" data-ir="dosis"></a>
+
       <div class="rapidos">
-        <button class="primario" data-ir="registrar" data-foco="u-fiasp">+ Fiasp</button>
-        <button class="secundario" data-ir="registrar" data-foco="hc-gramos">+ Hidratos de corrección</button>
+        <button class="primario" data-ir="dosis" data-foco="s-hc">Calcular dosis</button>
+        <button class="secundario" data-ir="registrar" data-foco="u-fiasp">+ Fiasp</button>
+        <button class="secundario ancho" data-ir="registrar" data-foco="hc-gramos">+ Hidratos de corrección</button>
       </div>
 
       <div id="aviso-pluma" class="aviso aviso-pluma oculto" role="status"></div>
@@ -93,6 +96,40 @@
         <span id="recoleccion"></span>
         <button id="btn-salir" class="enlace">Salir</button>
       </footer>
+    </div>
+
+    <!-- ============================================================ dosis (fase 3) -->
+    <div id="v-dosis" class="vista oculto">
+      <form id="f-sug" class="tarjeta" autocomplete="off">
+        <h2>Calcular dosis de Fiasp</h2>
+        <div class="chips" role="group" aria-label="Tipo">
+          <button type="button" data-tipo="comida" class="activo">Comida</button>
+          <button type="button" data-tipo="correccion">Solo corrección</button>
+        </div>
+        <div id="s-comida">
+          <label for="s-hc">Hidratos (g)</label>
+          <input id="s-hc" type="text" inputmode="decimal" placeholder="40">
+          <div class="franja">
+            <div><label for="s-hc-min">Mínimo (opcional)</label><input id="s-hc-min" type="text" inputmode="decimal"></div>
+            <div><label for="s-hc-max">Máximo (opcional)</label><input id="s-hc-max" type="text" inputmode="decimal"></div>
+          </div>
+          <div class="franja">
+            <div><label for="s-grasa">Grasa (g)</label><input id="s-grasa" type="text" inputmode="decimal" placeholder="0"></div>
+            <div><label for="s-prot">Proteína (g)</label><input id="s-prot" type="text" inputmode="decimal" placeholder="0"></div>
+          </div>
+        </div>
+        <button class="primario" type="submit" id="s-calcular">Leer la pluma y calcular</button>
+        <p id="s-estado" class="suave pequeno" role="status"></p>
+        <button id="s-apuntadas" type="button" class="secundario oculto">Mis dosis están todas apuntadas: calcular igualmente</button>
+      </form>
+
+      <section id="s-resultado" class="tarjeta oculto" aria-live="polite"></section>
+
+      <section class="tarjeta">
+        <h2>Últimas sugerencias</h2>
+        <ul id="s-lista" class="lista"></ul>
+        <p class="suave pequeno">Cada cifra sale de un cálculo fijo con tus parámetros aprobados, nunca de un modelo de lenguaje. Tú decides siempre.</p>
+      </section>
     </div>
 
     <!-- ============================================================ registrar -->
@@ -183,6 +220,7 @@
 
     <nav class="nav" aria-label="Secciones">
       <button data-ir="panel" class="activo">Panel</button>
+      <button data-ir="dosis">Dosis</button>
       <button data-ir="registrar">Registrar</button>
       <button data-ir="tresiba">Tresiba</button>
       <button data-ir="revisar">Revisar <span id="badge" class="badge oculto"></span></button>
