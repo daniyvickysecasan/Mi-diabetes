@@ -325,7 +325,9 @@ class ClienteLibreView:
             "StartDates": [inicio], "DailyLogShowMinMax": False, "DailyLogShowMaxKetones": False,
         }
         pluma = plumas[0]
-        sinc = datetime.fromtimestamp(pluma["uploadDate"], tz=timezone.utc) if pluma.get("uploadDate") else None
+        from servicios.recoleccion.csv_libreview import a_utc
+        # Como las horas del informe, uploadDate es la hora LOCAL contada como si fuera UTC.
+        sinc = a_utc(_local_ingenua(pluma["uploadDate"]), self.zona)[0] if pluma.get("uploadDate") else None
         return cuerpo, {"serie": pluma.get("sn"), "sincronizacion": sinc}
 
     def informe_registro_diario(self, hoy: date | None = None, dias: int = 14, max_sondeos: int = 30) -> Informe:

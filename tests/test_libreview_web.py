@@ -106,6 +106,15 @@ def test_cuerpo_del_informe_como_la_web(lv, ruta):
     assert cuerpo["CultureCode"] == "es-ES" and pluma["serie"] == "AB"
 
 
+def test_sincronizacion_de_la_pluma_es_hora_local(lv, ruta):
+    """Visto con la cuenta real (19-11-2026): uploadDate es la hora de Madrid contada como UTC."""
+    c = _cliente(lv, ruta)
+    local_como_utc = int(datetime(2026, 11, 19, 19, 9, tzinfo=timezone.utc).timestamp())
+    _, pluma = c.cuerpo_informe({"id": "u"}, {"dataSources": {
+        "y": {"id": "p", "type": 90002, "sn": "AB", "uploadDate": local_como_utc}}}, date(2026, 11, 19))
+    assert pluma["sincronizacion"] == datetime(2026, 11, 19, 18, 9, tzinfo=timezone.utc)
+
+
 # ------------------------------------------------------------------ flujo con el SMS
 def test_flujo_completo_sms_desde_la_app(con, lv, ruta, ahora):
     c = _cliente(lv, ruta)

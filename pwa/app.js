@@ -469,9 +469,8 @@ async function cargarRevisar() {
 }
 
 // ------------------------------------------------------------------ dosis (fase 3)
-// Antes de cada cálculo se lee la pluma en LibreView. Si la lectura falla, el cálculo no inventa:
-// queda bloqueado hasta leerla o hasta que confirmes que todas tus dosis están apuntadas.
-let tipoSug = "comida", ocupado = false, reintento = null;
+// Antes de cada cálculo se lee la pluma en LibreView y se pregunta si falta alguna dosis por apuntar.
+let tipoSug = "comida", ocupado = false;
 const NIVEL = { alta: "Incertidumbre alta", media: "Incertidumbre media", baja: "Incertidumbre baja" };
 const DECISION = { hecho: "Hecho", modificado: "Modificado", ignorado: "Ignorado" };
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -507,23 +506,40 @@ async function leerPluma() {
   return solicitud;
 }
 
+// Leer LibreView no basta: la pluma solo sube sus dosis cuando la acercas a LibreLink. Antes de cada
+// cálculo se pregunta si hay alguna inyección posterior a esa sincronización sin apuntar.
+function preguntar(sinc, leida) {
+  const caja = $("s-confirmar");
+  $("s-pregunta").textContent = (leida
+    ? (sinc ? `La pluma pasó por LibreLink por última vez a las ${hora(sinc)} (${fechaHora(sinc).split(",")[0]}).` : "No sé cuándo pasó la pluma por LibreLink.")
+    : "No se han podido leer las dosis de la pluma.") + " ¿Te has puesto Fiasp después sin apuntarla?";
+  caja.classList.remove("oculto");
+  return new Promise((resolver) => {
+    const fin = (v) => { caja.classList.add("oculto"); $("s-no").onclick = $("s-si").onclick = null; resolver(v); };
+    $("s-no").onclick = () => fin(false);
+    $("s-si").onclick = () => fin(true);
+  });
+}
+
 // Pide al servidor (que responde 409 mientras la lectura no ha terminado) y pinta el resultado.
-async function conPluma(ruta, cuerpo, apuntadas) {
+async function conPluma(ruta, cuerpo) {
   if (ocupado) return;
-  ocupado = true; $("s-calcular").disabled = true; $("s-apuntadas").classList.add("oculto");
+  ocupado = true; $("s-calcular").disabled = true;
   try {
-    if (!apuntadas) cuerpo.solicitud_lectura_id = await leerPluma();
-    else cuerpo.dosis_apuntadas = true;
+    cuerpo.solicitud_lectura_id = await leerPluma();
+    const [lect, est] = await Promise.all([pedir(`/api/libreview/actualizar/${cuerpo.solicitud_lectura_id}`),
+      pedir("/api/libreview/estado")]);
+    if (await preguntar(est.ultima_sincronizacion, lect.resultado === "ok")) {
+      aviso("Apunta la dosis y vuelve a calcular");
+      return ir("registrar", "u-fiasp");
+    }
+    cuerpo.dosis_apuntadas = true;
     let s;
     for (let i = 0; i < 10 && !s; i++) {
       try { s = await pedir(ruta, cuerpo); } catch (e) { if (e.estado !== 409) throw e; await espera(3000); }
     }
     if (!s) throw new Error("La lectura de la pluma no termina: inténtalo de nuevo");
     pintarSugerencia(s);
-    if (s.bloqueada && s.freno.length === 1 && s.freno[0] === "pluma_sin_leer") {
-      reintento = () => conPluma(ruta, { ...cuerpo }, true);
-      $("s-apuntadas").classList.remove("oculto");
-    }
     cargarDosis();
   } catch (e) {
     if (e.estado === 401) return mostrar("entrada");
@@ -535,10 +551,10 @@ function calcularDosis(ev) {
   ev.preventDefault();
   let cuerpo;
   try { cuerpo = peticionSugerencia(); } catch (e) { return aviso(e.message, true); }
-  conPluma("/api/sugerencias", cuerpo, false);
+  conPluma("/api/sugerencias", cuerpo);
 }
 
-const comprobarSegunda = (id) => { ir("dosis"); conPluma(`/api/sugerencias/${id}/segunda`, {}, false); };
+const comprobarSegunda = (id) => { ir("dosis"); conPluma(`/api/sugerencias/${id}/segunda`, {}); };
 
 function textoDecision(d) {
   let t = `${DECISION[d.decision]}${d.unidades != null ? `: ${num(d.unidades)} U` : ""} a las ${hora(d.ts)}`;
@@ -700,12 +716,15 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-hc").addEventListener("submit", enviarHidratos);
   $("f-tresiba").addEventListener("submit", enviarTresiba);
   $("f-sug").addEventListener("submit", calcularDosis);
-  $("s-apuntadas").addEventListener("click", () => reintento && reintento());
-  document.querySelectorAll("[data-tipo]").forEach((b) => b.addEventListener("click", () => {
-    tipoSug = b.dataset.tipo;
-    document.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("activo", x === b));
-    $("s-comida").classList.toggle("oculto", tipoSug !== "comida");
-  }));
+  const elegirTipo = (tipo) => {
+    tipoSug = tipo;
+    document.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("activo", x.dataset.tipo === tipo));
+    $("s-comida").classList.toggle("oculto", tipo !== "comida");
+  };
+  document.querySelectorAll("[data-tipo]").forEach((b) => b.addEventListener("click", () => elegirTipo(b.dataset.tipo)));
+  $("btn-correccion").addEventListener("click", () => {   // corrección hacia el objetivo, sin comer
+    ir("dosis"); elegirTipo("correccion"); conPluma("/api/sugerencias", { tipo: "correccion" });
+  });
   window.addEventListener("online", () => { vaciarCola(); refrescarVista(); });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !$("panel").classList.contains("oculto")) { vaciarCola(); refrescarVista(); }

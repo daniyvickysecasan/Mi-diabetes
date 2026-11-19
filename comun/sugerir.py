@@ -3,9 +3,11 @@
 Flujo en la app (acordado el 19-11-2026):
   1. Al pedir una dosis, la app lanza una lectura de la pluma en LibreView (solicitudes_lectura_pluma).
   2. Cuando el lector la cierra, la app pide la sugerencia con el id de esa solicitud.
-  3. Si la lectura falla o LibreView pide el SMS, el cálculo NO espera ni inventa: queda bloqueado
-     y pide leer la pluma o apuntar las dosis. Si Daniel confirma que todas sus dosis están
-     apuntadas en la app (`dosis_apuntadas=True`), se calcula con aviso y más incertidumbre.
+  3. Siempre hace falta que Daniel confirme (`dosis_apuntadas=True`) que no se ha puesto nada sin
+     apuntar desde la última vez que la pluma pasó por LibreLink: leer LibreView no trae lo que la
+     pluma aún no ha subido. Sin esa confirmación, el cálculo queda bloqueado.
+  4. Si la lectura falla o LibreView pide el SMS, el cálculo NO espera ni inventa. Con la
+     confirmación se calcula con las dosis apuntadas, con aviso y más incertidumbre.
 
 AFECTA A LA DOSIS: cambios con tests y aprobación de Daniel.
 """
@@ -29,7 +31,11 @@ class PeticionNoValida(ValueError):
     pass
 
 
-def estado_pluma(con, solicitud_id: int | None, dosis_apuntadas: bool, ahora: datetime) -> str:
+def estado_pluma(con, solicitud_id: int | None, dosis_apuntadas: bool, ahora: datetime) -> tuple[str, bool]:
+    """(estado, lectura_ok). 'leida' exige una lectura correcta Y que Daniel confirme que no se ha
+    puesto nada sin apuntar desde la última sincronización de la pluma con LibreLink: la pluma no
+    sube sola sus dosis (lo vimos el 19-11-2026 con 2 U que aún no habían llegado)."""
+    ok = False
     if solicitud_id is not None:
         s = EL.solicitud(con, solicitud_id)
         if s is None:
@@ -38,8 +44,10 @@ def estado_pluma(con, solicitud_id: int | None, dosis_apuntadas: bool, ahora: da
             if s["pedida_en"] >= ahora - EL.SIN_RESPUESTA:
                 raise LecturaEnCurso("Leyendo la pluma…")
         elif s["resultado"] == "ok" and s["atendida_en"] >= ahora - LECTURA_VALIDA:
-            return "leida"
-    return "confirmada_a_mano" if dosis_apuntadas else "no_leida"
+            ok = True
+    if not dosis_apuntadas:
+        return "no_leida", ok
+    return ("leida" if ok else "confirmada_a_mano"), ok
 
 
 def _entrada_comun(con, ahora: datetime, tipo: str, solicitud_id: int | None, dosis_apuntadas: bool,
@@ -59,6 +67,7 @@ def _entrada_comun(con, ahora: datetime, tipo: str, solicitud_id: int | None, do
                         WHERE ts > %s AND ts <= %s""",
                      (ahora - timedelta(minutes=S.LIMITES.hidratos_correccion_aviso_min), ahora)).fetchone()["g"]
     delta = g["delta_5min_mgdl"] if g else None
+    pluma, lectura_ok = estado_pluma(con, solicitud_id, dosis_apuntadas, ahora)
     return {
         "ahora": ahora, "tipo": tipo,
         "version_parametros_id": v["id"] if v else None, "ratio_g_u": ratio, "sensibilidad_mgdl_u": sens,
@@ -69,7 +78,8 @@ def _entrada_comun(con, ahora: datetime, tipo: str, solicitud_id: int | None, do
         "pendiente_mgdl_min": delta / 5 if delta is not None else None,
         "tendencia": g["tendencia"] if g else None,
         "insulina_activa_u": iob["unidades"], "dosis_fiasp_3h": n3h, "dosis_con_dudas": iob["con_dudas"],
-        "estado_pluma": estado_pluma(con, solicitud_id, dosis_apuntadas, ahora),
+        "estado_pluma": pluma, "lectura_ok": lectura_ok,
+        "sincronizacion_pluma": EL.leer(con)["ultima_sincronizacion"],
         "hidratos_correccion_recientes_g": float(hc),
     }, {"franjas": franjas, "insulina_activa": iob}
 
@@ -156,4 +166,5 @@ def para_la_app(f: dict) -> dict:
         "ts_segunda": f["ts_segunda"].isoformat() if f["ts_segunda"] else None,
         "estado_pluma": f["estado_pluma"], "bloqueada": f["bloqueada"], "motivo_bloqueo": f["motivo_bloqueo"],
         "incertidumbre": f["incertidumbre"], "avisos": f["avisos"], "freno": f["traza"].get("freno", []),
+        "sincronizacion_pluma": f["traza"]["entrada"].get("sincronizacion_pluma"),
     }
