@@ -1,6 +1,6 @@
 // Service worker: guarda solo la "carcasa" de la app para que abra sin conexión.
 // Los datos de salud (/api, /auth) NUNCA se guardan en caché.
-const CACHE = "mi-diabetes-v3";
+const CACHE = "mi-diabetes-v4";
 const CARCASA = ["/", "/index.html", "/estilo.css", "/app.js", "/manifest.webmanifest",
                  "/icono.svg", "/icono-180.png"];
 
@@ -18,7 +18,7 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET" || url.origin !== location.origin) return;
   if (url.pathname.startsWith("/api") || url.pathname.startsWith("/auth") || url.pathname === "/salud") return;
   // Red primero, caché si no hay conexión.
-  e.respondWith(fetch(e.request).then((r) => {
+  e.respondWith(fetch(e.request, { cache: "no-cache" }).then((r) => {
     const copia = r.clone();
     caches.open(CACHE).then((c) => c.put(e.request, copia));
     return r;
