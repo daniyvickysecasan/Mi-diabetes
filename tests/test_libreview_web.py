@@ -364,3 +364,12 @@ def test_si_libreview_deja_entrar_sin_sms_lee_directamente(con, lv, ruta, ahora)
     r = vuelta(con, c, ahora=ahora)
     assert r["accion"] == "sincronizado" and lv.sms_enviados == 1   # solo el del primer día
     assert E.leer(con)["estado"] == "ok"
+
+
+def test_token_de_chrome_entra_sin_sms(con, lv, ruta, ahora):
+    lv.confianza_valida.add("confianza-de-chrome")
+    c = ClienteLibreView("yo@ejemplo.test", CLAVE, ruta_sesion=ruta, espera_sondeo_s=0,
+                         dispositivo_confianza="confianza-de-chrome",
+                         cliente=httpx.Client(transport=lv.transporte()))
+    r = _leer(con, c, ahora=ahora)
+    assert r["accion"] == "sincronizado" and r["dosis"]["insertadas"] == 2 and lv.sms_enviados == 0

@@ -32,6 +32,7 @@ class Ajustes:
     libreview_region: str = ""            # vacío = la que diga LibreView al entrar (p. ej. "eu")
     libreview_version: str = "3.27.0.42"  # versión de la web de LibreView que se anuncia en las cabeceras
     libreview_sesion: str = "/datos/libreview/sesion.json"  # token de dispositivo de confianza (volumen local)
+    libreview_dispositivo: str = ""       # trustedDeviceToken copiado de Chrome (secreto, solo en .env)
     intervalo_pluma_s: int = 5            # cada cuánto mira la base (lectura pedida, SMS, código)
     solape_pluma_h: int = 48              # relee los dos últimos días: la pluma sube con retraso
 
@@ -69,6 +70,7 @@ class Ajustes:
             libreview_region=(e("LIBREVIEW_REGION") or "").strip().lower(),
             libreview_version=e("LIBREVIEW_VERSION") or "3.27.0.42",
             libreview_sesion=e("LIBREVIEW_SESION") or "/datos/libreview/sesion.json",
+            libreview_dispositivo=e("LIBREVIEW_DISPOSITIVO_CONFIANZA") or "",
             intervalo_pluma_s=int(e("INTERVALO_PLUMA_S") or 5),
             solape_pluma_h=int(e("SOLAPE_PLUMA_H") or 48),
             rango_bajo=int(e("RANGO_BAJO") or 70),

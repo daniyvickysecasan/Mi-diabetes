@@ -30,6 +30,7 @@ def _imprimir(r) -> None:
 def _cliente(aj: Ajustes) -> ClienteLibreView:
     return ClienteLibreView(aj.libreview_email, aj.libreview_password, aj.libreview_region,
                             ruta_sesion=aj.libreview_sesion, zona=aj.zona_horaria,
+                            dispositivo_confianza=aj.libreview_dispositivo or None,
                             version_web=aj.libreview_version)
 
 
