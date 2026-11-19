@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api import auth, glucosa
+from api import auth, dosis, glucosa
 from comun.ajustes import Ajustes
 from comun.bd import conectar
 
@@ -20,7 +20,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
 
 
 def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
-    app = FastAPI(title="Mi Diabetes", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Mi Diabetes", version="0.2.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.ajustes = ajustes or Ajustes.desde_entorno()
 
     @app.middleware("http")
@@ -45,6 +45,7 @@ def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(glucosa.router)
+    app.include_router(dosis.router)
     app.mount("/", StaticFiles(directory=PWA, html=True), name="pwa")
     return app
 

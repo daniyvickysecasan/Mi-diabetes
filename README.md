@@ -25,14 +25,17 @@ docs/                plan y traspaso
 tests/               pytest contra TimescaleDB real
 ```
 
-## Estado: fase 1
+## Estado: fases 1 y 2
 
 | Pieza | Estado |
 |---|---|
 | Esquema (glucosa, dosis, comidas, chat, hidratos de corrección, Tresiba, sugerencias, decisiones, parámetros) | ✔ |
 | Recolector de Nightscout (incremental, histórico, huecos, verificación, filtro de origen propio) | ✔ |
 | API con passkey y panel PWA (glucosa, tendencia, TIR 24 h y 14 días) | ✔ |
-| Copias restic y túnel de Cloudflare | plantillas listas; se ejecutan en el PC |
+| Copias restic y túnel de Cloudflare | en marcha en el PC |
+| Registro de Fiasp, hidratos de corrección y Tresiba en la PWA, con cola sin conexión | ✔ |
+| Conciliación app ↔ pluma (API y CSV de LibreView), revisión de discrepancias | ✔ |
+| Insulina activa (curva oref0 de Fiasp) y métricas de consenso (TBR/TIR/TAR, GMI, CV) | ✔ |
 
 ## Desarrollo
 

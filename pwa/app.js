@@ -1,5 +1,6 @@
 "use strict";
-// PWA mínima: entrada con passkey y panel de glucosa. Sin dependencias externas.
+// PWA: entrada con passkey, panel, registro de dosis e hidratos, Tresiba y revisión.
+// Sin dependencias externas. Los registros sin conexión esperan en una cola y se reenvían solos.
 
 const ZONA = "Europe/Madrid";
 const $ = (id) => document.getElementById(id);
@@ -146,6 +147,7 @@ async function refrescar() {
     $("rango").textContent = `(${p.rango_mgdl[0]}–${p.rango_mgdl[1]})`;
     pintarTir($("tir24"), "24 h", p.tir_24h);
     pintarTir($("tir14"), "14 días", p.tir_14d);
+    pintarFase2(p);
     const r = p.recoleccion;
     $("recoleccion").textContent = r.error ? `Recolección con error: ${r.error}` :
       r.ultima ? `Recolectado a las ${hora(r.ultima)}` : "Recolección sin ejecutar";
@@ -155,23 +157,291 @@ async function refrescar() {
   }
 }
 
-let temporizador;
+// ------------------------------------------------------------------ formato
+const num = (v, d = 1) => (v == null ? "--" : Number(v).toLocaleString("es-ES", { maximumFractionDigits: d }));
+const fechaHora = (iso) => new Date(iso).toLocaleString("es-ES", { timeZone: ZONA, day: "2-digit", month: "2-digit",
+  hour: "2-digit", minute: "2-digit" });
+const leerNumero = (s) => { const v = parseFloat(String(s).replace(",", ".")); return Number.isFinite(v) ? v : NaN; };
+const dosDig = (n) => String(n).padStart(2, "0");
+function valorLocal(d = new Date()) {     // para <input type="datetime-local"> (hora del móvil)
+  return `${d.getFullYear()}-${dosDig(d.getMonth() + 1)}-${dosDig(d.getDate())}T${dosDig(d.getHours())}:${dosDig(d.getMinutes())}`;
+}
+const desdeLocal = (v) => new Date(v).toISOString();
+function nuevoId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+const li = (texto, clase = "") => { const e = document.createElement("li"); e.textContent = texto; if (clase) e.className = clase; return e; };
+
+let avisoT;
+function aviso(texto, error = false) {
+  const m = $("msg");
+  m.textContent = texto; m.classList.toggle("error", error); m.classList.remove("oculto");
+  clearTimeout(avisoT); avisoT = setTimeout(() => m.classList.add("oculto"), 4000);
+}
+
+const ESTADOS = {
+  pendiente: "esperando a la pluma", emparejada: "confirmada por la pluma", discrepancia: "no coincide con la pluma",
+  solo_app: "la pluma no la tiene", solo_pluma: "solo en la pluma", descartada: "descartada",
+};
+const ORIGENES = { app: "app", pluma_libreview: "pluma", csv_libreview: "pluma (CSV)", manual: "manual" };
+
+// ------------------------------------------------------------------ cola sin conexión
+// Cada registro lleva un id_cliente: si el envío se repite, el servidor no duplica nada.
+const CLAVE_COLA = "md-cola-v1";
+const leerCola = () => { try { return JSON.parse(localStorage.getItem(CLAVE_COLA) || "[]"); } catch { return []; } };
+const guardarCola = (c) => { try { localStorage.setItem(CLAVE_COLA, JSON.stringify(c)); } catch { /* sin almacenamiento */ } };
+
+function pintarCola() {
+  const c = leerCola(), div = $("cola");
+  div.classList.toggle("oculto", c.length === 0);
+  div.replaceChildren();
+  if (!c.length) return;
+  const pend = c.filter((x) => !x.error), mal = c.filter((x) => x.error);
+  if (pend.length) {
+    const p = document.createElement("div");
+    p.textContent = `${pend.length} registro${pend.length > 1 ? "s" : ""} sin enviar (se enviará${pend.length > 1 ? "n" : ""} al recuperar la conexión): ` +
+      pend.map((x) => x.texto).join(" · ") + ". La insulina activa aún no los incluye.";
+    div.append(p);
+  }
+  for (const x of mal) {
+    const p = document.createElement("div");
+    p.className = "error";
+    p.textContent = `Rechazado: ${x.texto} (${x.error}). `;
+    const b = document.createElement("button");
+    b.className = "enlace"; b.textContent = "Quitar";
+    b.addEventListener("click", () => { guardarCola(leerCola().filter((y) => y.cuerpo.id_cliente !== x.cuerpo.id_cliente)); pintarCola(); });
+    p.append(b); div.append(p);
+  }
+}
+
+let enviando = false;
+async function vaciarCola() {
+  if (enviando) return;
+  enviando = true;
+  try {
+    for (const x of leerCola()) {
+      if (x.error) continue;
+      try {
+        await pedir(x.ruta, x.cuerpo);
+        guardarCola(leerCola().filter((y) => y.cuerpo.id_cliente !== x.cuerpo.id_cliente));
+      } catch (e) {
+        if (e.estado === 401) { mostrar("entrada"); break; }
+        if (e.estado && e.estado >= 400 && e.estado < 500) {      // datos inválidos: no reintentar
+          guardarCola(leerCola().map((y) => (y.cuerpo.id_cliente === x.cuerpo.id_cliente ? { ...y, error: e.message } : y)));
+          continue;
+        }
+        break;                                                     // sin conexión o servidor caído
+      }
+    }
+  } finally {
+    enviando = false;
+    pintarCola();
+  }
+}
+
+async function registrar(ruta, cuerpo, texto) {
+  const c = leerCola();
+  c.push({ ruta, cuerpo, texto, creado: new Date().toISOString() });
+  guardarCola(c);
+  await vaciarCola();
+  const sigue = leerCola().find((y) => y.cuerpo.id_cliente === cuerpo.id_cliente);
+  if (!sigue) aviso(`Guardado: ${texto}`);
+  else if (sigue.error) aviso(`No se ha guardado: ${sigue.error}`, true);
+  else aviso(`Sin conexión: ${texto} queda en cola y se enviará solo`);
+  refrescarVista();
+}
+
+// ------------------------------------------------------------------ panel (fase 2)
+function pintarFase2(p) {
+  const i = p.insulina_activa;
+  $("iob").textContent = num(i.unidades, 2);
+  const n = i.dosis.length;
+  $("iob-detalle").textContent = n ? `${n} dosis en las últimas 5 h · curva Fiasp (pico ${p.curva.pico_min} min, ${p.curva.duracion_min / 60} h)` +
+    (i.con_dudas ? " · incluye dosis sin confirmar por la pluma" : "") : "Sin dosis de Fiasp en las últimas 5 h";
+  const r = $("aviso-revisar");
+  r.classList.toggle("oculto", !p.por_revisar);
+  r.textContent = p.por_revisar ? `${p.por_revisar} dosis por revisar →` : "";
+  const b = $("badge");
+  b.classList.toggle("oculto", !p.por_revisar); b.textContent = p.por_revisar || "";
+  const m = p.metricas_14d, dl = $("metricas");
+  dl.replaceChildren();
+  const filas = [
+    ["< 54", m.pct_muy_bajo, "%", "b"], ["54–69", m.pct_bajo, "%", "b"], ["70–180 (TIR)", m.pct_en_rango, "%", "r"],
+    ["181–250", m.pct_alto, "%", "a"], ["> 250", m.pct_muy_alto, "%", "a"], ["GMI", m.gmi_pct, "%", ""],
+    ["CV", m.cv_pct, "%", m.cv_pct > 36 ? "a" : ""], ["Media", m.media_mgdl, " mg/dL", ""],
+  ];
+  for (const [k, v, u, c] of filas) {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v == null ? "--" : `${num(v)}${u}`; if (c) dd.className = `t-${c}`;
+    dl.append(dt, dd);
+  }
+  const dt = document.createElement("dt"); dt.textContent = "Datos";
+  const dd = document.createElement("dd"); dd.textContent = `${num(m.cobertura_pct)}%` + (m.suficiente ? "" : " (poco fiable)");
+  dl.append(dt, dd);
+}
+
+// ------------------------------------------------------------------ registrar
+async function cargarRegistrar() {
+  if (!$("t-fiasp").dataset.tocado) $("t-fiasp").value = valorLocal();
+  if (!$("hc-t").dataset.tocado) $("hc-t").value = valorLocal();
+  try {
+    const [d, h, c] = await Promise.all([pedir("/api/dosis?horas=48"), pedir("/api/hidratos-correccion?horas=48"),
+      pedir("/api/comidas/recientes")]);
+    const sel = $("c-fiasp"), actual = sel.value;
+    sel.replaceChildren(new Option("Sin comida", ""));
+    for (const x of c.comidas) sel.append(new Option(`${hora(x.ts)} · ${x.descripcion || "comida"}${x.hidratos_g != null ? ` (${num(x.hidratos_g, 0)} g)` : ""}`, x.id));
+    sel.value = actual;
+    const items = [
+      ...d.dosis.map((x) => ({ ts: x.ts, texto: `${fechaHora(x.ts)} · ${x.insulina === "fiasp" ? "Fiasp" : "Tresiba"} ${num(x.unidades)} U · ${ORIGENES[x.origen] || x.origen} · ${ESTADOS[x.estado] || x.estado}${x.cuenta ? "" : " · no cuenta"}`,
+        clase: x.requiere_revision ? "revisar" : (x.cuenta ? "" : "tenue") })),
+      ...h.hidratos.map((x) => ({ ts: x.ts, texto: `${fechaHora(x.ts)} · Hidratos ${num(x.gramos)} g · ${x.motivo}`, clase: "" })),
+    ].sort((a, b) => b.ts.localeCompare(a.ts));
+    const ul = $("historial");
+    ul.replaceChildren(...(items.length ? items.map((x) => li(x.texto, x.clase)) : [li("Nada registrado", "suave")]));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    $("historial").replaceChildren(li("Sin conexión: el historial no está disponible", "suave"));
+  }
+}
+
+function enviarFiasp(ev) {
+  ev.preventDefault();
+  const u = leerNumero($("u-fiasp").value);
+  if (!(u > 0)) return aviso("Escribe las unidades", true);
+  if (!$("t-fiasp").value) return aviso("Falta la hora", true);
+  const cuerpo = { id_cliente: nuevoId(), ts: desdeLocal($("t-fiasp").value), unidades: u };
+  if ($("c-fiasp").value) cuerpo.comida_id = Number($("c-fiasp").value);
+  if ($("n-fiasp").value.trim()) cuerpo.notas = $("n-fiasp").value.trim();
+  $("f-fiasp").reset(); delete $("t-fiasp").dataset.tocado; $("t-fiasp").value = valorLocal();
+  registrar("/api/dosis", cuerpo, `Fiasp ${num(u)} U a las ${hora(cuerpo.ts)}`);
+}
+
+function enviarHidratos(ev) {
+  ev.preventDefault();
+  const g = leerNumero($("hc-gramos").value);
+  if (!(g > 0)) return aviso("Escribe los gramos", true);
+  const cuerpo = { id_cliente: nuevoId(), ts: desdeLocal($("hc-t").value), gramos: g, motivo: $("hc-motivo").value };
+  $("f-hc").reset(); delete $("hc-t").dataset.tocado; $("hc-t").value = valorLocal();
+  registrar("/api/hidratos-correccion", cuerpo, `hidratos ${num(g)} g a las ${hora(cuerpo.ts)}`);
+}
+
+// ------------------------------------------------------------------ Tresiba
+async function cargarTresiba() {
+  if (!$("tr-desde").dataset.tocado) $("tr-desde").value = valorLocal();
+  try {
+    const t = await pedir("/api/tresiba");
+    const v = t.vigente;
+    $("tr-vigente").textContent = v ? `${num(v.unidades)} U cada día a las ${v.hora_local}` : "Sin configurar todavía.";
+    if (v && !$("tr-u").value) { $("tr-u").value = String(v.unidades).replace(".", ","); $("tr-hora").value = v.hora_local; }
+    $("tr-historial").replaceChildren(...(t.historial.length ? t.historial.map((h) =>
+      li(`Desde ${fechaHora(h.vigente_desde)}: ${num(h.unidades)} U a las ${h.hora_local}${h.notas ? ` · ${h.notas}` : ""}`))
+      : [li("Sin cambios registrados", "suave")]));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    $("tr-vigente").textContent = "Sin conexión con el servidor.";
+  }
+}
+
+async function enviarTresiba(ev) {
+  ev.preventDefault();
+  const u = leerNumero($("tr-u").value);
+  if (!(u > 0) || !$("tr-hora").value) return aviso("Faltan las unidades o la hora", true);
+  try {
+    await pedir("/api/tresiba", { unidades: u, hora_local: $("tr-hora").value, vigente_desde: desdeLocal($("tr-desde").value),
+      notas: $("tr-notas").value.trim() || null });
+    aviso(`Tresiba: ${num(u)} U a las ${$("tr-hora").value}`);
+    $("tr-notas").value = ""; delete $("tr-desde").dataset.tocado;
+    cargarTresiba();
+  } catch (e) {
+    aviso(e.estado ? e.message : "Sin conexión: el cambio de Tresiba necesita conexión", true);
+  }
+}
+
+// ------------------------------------------------------------------ revisar
+function descripcion(d) {
+  return `${ORIGENES[d.origen] || d.origen}: ${num(d.unidades)} U a las ${hora(d.ts)} (${fechaHora(d.ts).split(",")[0]})`;
+}
+
+async function accionRevision(id, accion) {
+  try {
+    await pedir(`/api/dosis/${id}/revision`, { accion });
+    aviso("Hecho");
+    cargarRevisar();
+  } catch (e) {
+    aviso(e.estado ? e.message : "Sin conexión: la revisión necesita conexión", true);
+  }
+}
+
+async function cargarRevisar() {
+  const ul = $("revisar-lista");
+  try {
+    const { dosis } = await pedir("/api/dosis/revisar");
+    if (!dosis.length) { ul.replaceChildren(li("Nada que revisar", "suave")); $("badge").classList.add("oculto"); return; }
+    ul.replaceChildren(...dosis.map((d) => {
+      const e = document.createElement("li");
+      e.className = "caso";
+      const t = document.createElement("div"); t.className = "fuerte";
+      t.textContent = descripcion(d) + (d.par ? ` · ${descripcion(d.par)}` : "");
+      const m = document.createElement("div"); m.className = "suave pequeno"; m.textContent = d.motivo || ESTADOS[d.estado];
+      const acciones = document.createElement("div"); acciones.className = "acciones";
+      const boton = (texto, id, accion) => { const b = document.createElement("button"); b.textContent = texto;
+        b.addEventListener("click", () => accionRevision(id, accion)); acciones.append(b); };
+      boton(d.estado === "discrepancia" ? "Vale, cuenta la pluma" : "Está bien así", d.id, "aceptar");
+      if (d.par) {
+        boton("Son dos dosis distintas", d.id, "separar");
+        const app = d.origen === "app" ? d : d.par, pluma = d.origen === "app" ? d.par : d;
+        boton("Borrar la de la app", app.id, "descartar");
+        boton("No es una dosis (pluma)", pluma.id, "descartar");
+      } else {
+        boton(d.origen === "app" ? "Borrar: registro erróneo" : "No es una dosis (cebado)", d.id, "descartar");
+      }
+      e.append(t, m, acciones);
+      return e;
+    }));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    ul.replaceChildren(li("Sin conexión con el servidor", "suave"));
+  }
+}
+
+// ------------------------------------------------------------------ navegación
+let temporizador, vista = "panel";
+const CARGAS = { panel: refrescar, registrar: cargarRegistrar, tresiba: cargarTresiba, revisar: cargarRevisar };
+const refrescarVista = () => CARGAS[vista]();
+
+function ir(cual, foco) {
+  vista = cual;
+  for (const k of Object.keys(CARGAS)) $(`v-${k}`).classList.toggle("oculto", k !== cual);
+  document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("activo", b.dataset.ir === cual));
+  window.scrollTo(0, 0);
+  refrescarVista();
+  if (foco) setTimeout(() => $(foco).focus(), 50);
+}
+
 function mostrar(cual) {
   $("entrada").classList.toggle("oculto", cual !== "entrada");
   $("panel").classList.toggle("oculto", cual !== "panel");
   clearInterval(temporizador);
-  if (cual === "panel") { refrescar(); temporizador = setInterval(refrescar, 60e3); }
+  if (cual === "panel") {
+    ir(vista);
+    vaciarCola();
+    temporizador = setInterval(() => { vaciarCola(); if (vista === "panel") refrescar(); }, 60e3);
+  }
 }
 
 async function iniciar() {
+  pintarCola();
   try {
     const e = await pedir("/auth/estado");
     if (e.autenticado) return mostrar("panel");
     $("alta").open = !e.hay_passkeys;
     mostrar("entrada");
   } catch {
-    mostrar("entrada");
-    $("msg-entrada").textContent = "No se puede contactar con el servidor.";
+    // Sin conexión: se puede registrar igualmente; la cola se enviará al volver la conexión.
+    mostrar("panel");
+    aviso("Sin conexión: puedes registrar y se enviará después", true);
   }
 }
 
@@ -179,7 +449,22 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-entrar").addEventListener("click", entrar);
   $("btn-alta").addEventListener("click", darDeAlta);
   $("btn-salir").addEventListener("click", async () => { await pedir("/auth/salir", {}); mostrar("entrada"); });
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("panel").classList.contains("oculto")) refrescar(); });
+  document.querySelectorAll("[data-ir]").forEach((b) => b.addEventListener("click", (ev) => {
+    ev.preventDefault(); ir(b.dataset.ir, b.dataset.foco);
+  }));
+  document.querySelectorAll("[data-paso]").forEach((b) => b.addEventListener("click", () => {
+    const v = Math.max(0, (leerNumero($("u-fiasp").value) || 0) + Number(b.dataset.paso));
+    $("u-fiasp").value = String(v).replace(".", ",");
+  }));
+  document.querySelectorAll("[data-g]").forEach((b) => b.addEventListener("click", () => { $("hc-gramos").value = b.dataset.g; }));
+  for (const id of ["t-fiasp", "hc-t", "tr-desde"]) $(id).addEventListener("input", () => { $(id).dataset.tocado = "1"; });
+  $("f-fiasp").addEventListener("submit", enviarFiasp);
+  $("f-hc").addEventListener("submit", enviarHidratos);
+  $("f-tresiba").addEventListener("submit", enviarTresiba);
+  window.addEventListener("online", () => { vaciarCola(); refrescarVista(); });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && !$("panel").classList.contains("oculto")) { vaciarCola(); refrescarVista(); }
+  });
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
   iniciar();
 });
