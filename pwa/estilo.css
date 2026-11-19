@@ -8,7 +8,7 @@
           --banda: rgba(34, 197, 94, .15); color-scheme: light; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+body { margin: 0; padding-bottom: 80px; font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
        background: var(--fondo); color: var(--texto);
        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
 main { max-width: 520px; margin: 0 auto; }
@@ -46,3 +46,43 @@ svg .limite { stroke: var(--suave); stroke-dasharray: 3 4; stroke-width: .6; }
 svg .eje { fill: var(--suave); font-size: 9px; }
 svg .p-bajo { fill: var(--bajo); } svg .p-rango { fill: var(--rango); } svg .p-alto { fill: var(--alto); }
 .fuerte { font-weight: 700; }
+
+/* ---------------------------------------------------------------- fase 2 */
+main#panel { padding-bottom: 72px; }
+.pequeno { font-size: .85rem; }
+.rapidos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.rapidos button { width: 100%; }
+button.secundario { background: var(--tarjeta); color: var(--texto); font-weight: 600; border: 1px solid var(--suave); }
+.iob { font-size: 2.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.iob-texto { font-size: 1.4rem; font-weight: 600; margin: 4px 0; }
+.enlace-bloque { display: block; text-decoration: none; margin-top: 10px; background: rgba(245, 158, 11, .15); color: var(--alto); }
+.metricas { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin: 0; font-variant-numeric: tabular-nums; }
+.metricas dt { color: var(--suave); } .metricas dd { margin: 0; text-align: right; font-weight: 600; }
+.t-b { color: var(--bajo); } .t-r { color: var(--rango); } .t-a { color: var(--alto); }
+form.tarjeta button.primario { margin-top: 14px; }
+select { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border: 1px solid var(--suave);
+         background: var(--fondo); color: var(--texto); }
+.paso { display: grid; grid-template-columns: 56px 1fr 56px; gap: 8px; }
+.paso input { text-align: center; font-size: 1.6rem; font-weight: 700; }
+.paso button { font-size: 1.5rem; padding: 0; background: var(--fondo); border: 1px solid var(--suave); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chips button { flex: 1; border: 1px solid var(--suave); }
+.lista { list-style: none; padding: 0; margin: 0; }
+.lista li { padding: 8px 0; border-bottom: 1px solid rgba(148, 163, 184, .2); font-size: .9rem; }
+.lista li:last-child { border-bottom: 0; }
+.lista li.revisar { color: var(--alto); } .lista li.tenue { opacity: .5; text-decoration: line-through; }
+.caso .acciones { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.caso .acciones button { font-size: .85rem; padding: 8px 10px; border: 1px solid var(--suave); }
+.cola { margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: rgba(37, 99, 235, .15); font-size: .9rem; }
+.cola .error, .toast.error { color: var(--bajo); }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); margin: 0 auto;
+         max-width: 488px; padding: 12px 14px; border-radius: 12px; background: var(--tarjeta);
+         box-shadow: 0 4px 16px rgba(0, 0, 0, .35); z-index: 20; }
+.nav { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr);
+       background: var(--tarjeta); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); z-index: 10;
+       border-top: 1px solid rgba(148, 163, 184, .2); }
+.nav button { background: none; color: var(--suave); padding: 10px 4px; font-size: .9rem; }
+.nav button.activo { color: var(--texto); font-weight: 700; }
+.badge { display: inline-block; min-width: 1.3em; padding: 0 .35em; border-radius: 1em; background: var(--alto);
+         color: #000; font-size: .75rem; font-weight: 700; }
+.iob .unidad { font-size: 1rem; font-weight: 400; }

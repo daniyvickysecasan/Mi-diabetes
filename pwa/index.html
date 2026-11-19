@@ -30,33 +30,146 @@
     <p id="msg-entrada" class="mensaje" role="status"></p>
   </main>
 
-  <main id="panel" class="oculto" aria-label="Panel de glucosa">
-    <section class="actual" aria-live="polite">
-      <div id="valor" class="valor">--</div>
-      <div class="detalle">
-        <span id="flecha" class="flecha"></span>
-        <span id="delta"></span>
-        <span class="suave">mg/dL</span>
+  <main id="panel" class="oculto" aria-label="Mi Diabetes">
+    <div id="cola" class="cola oculto" role="status"></div>
+
+    <!-- ============================================================ panel -->
+    <div id="v-panel" class="vista">
+      <section class="actual" aria-live="polite">
+        <div id="valor" class="valor">--</div>
+        <div class="detalle">
+          <span id="flecha" class="flecha"></span>
+          <span id="delta"></span>
+          <span class="suave">mg/dL</span>
+        </div>
+        <div id="edad" class="suave"></div>
+        <div id="aviso" class="aviso oculto" role="alert"></div>
+      </section>
+
+      <div class="rapidos">
+        <button class="primario" data-ir="registrar" data-foco="u-fiasp">+ Fiasp</button>
+        <button class="secundario" data-ir="registrar" data-foco="hc-gramos">+ Hidratos de corrección</button>
       </div>
-      <div id="edad" class="suave"></div>
-      <div id="aviso" class="aviso oculto" role="alert"></div>
-    </section>
 
-    <section class="tarjeta">
-      <h2>Últimas 24 h</h2>
-      <svg id="grafica" viewBox="0 0 360 180" role="img" aria-label="Gráfica de glucosa de las últimas 24 horas"></svg>
-    </section>
+      <section class="tarjeta">
+        <h2>Insulina activa</h2>
+        <div class="iob"><span id="iob">--</span> <span class="suave unidad">U de Fiasp</span></div>
+        <div id="iob-detalle" class="suave pequeno"></div>
+        <a id="aviso-revisar" class="aviso enlace-bloque oculto" href="#revisar" data-ir="revisar"></a>
+      </section>
 
-    <section class="tarjeta">
-      <h2>Tiempo en rango <span id="rango" class="suave"></span></h2>
-      <div class="tir" id="tir24"></div>
-      <div class="tir" id="tir14"></div>
-    </section>
+      <section class="tarjeta">
+        <h2>Últimas 24 h</h2>
+        <svg id="grafica" viewBox="0 0 360 180" role="img" aria-label="Gráfica de glucosa de las últimas 24 horas"></svg>
+      </section>
 
-    <footer class="pie suave">
-      <span id="recoleccion"></span>
-      <button id="btn-salir" class="enlace">Salir</button>
-    </footer>
+      <section class="tarjeta">
+        <h2>Tiempo en rango <span id="rango" class="suave"></span></h2>
+        <div class="tir" id="tir24"></div>
+        <div class="tir" id="tir14"></div>
+      </section>
+
+      <section class="tarjeta">
+        <h2>Métricas de 14 días</h2>
+        <dl id="metricas" class="metricas"></dl>
+      </section>
+
+      <footer class="pie suave">
+        <span id="recoleccion"></span>
+        <button id="btn-salir" class="enlace">Salir</button>
+      </footer>
+    </div>
+
+    <!-- ============================================================ registrar -->
+    <div id="v-registrar" class="vista oculto">
+      <form id="f-fiasp" class="tarjeta" autocomplete="off">
+        <h2>Dosis de Fiasp</h2>
+        <label for="u-fiasp">Unidades</label>
+        <div class="paso">
+          <button type="button" data-paso="-0.5" aria-label="Medio menos">−</button>
+          <input id="u-fiasp" type="text" inputmode="decimal" placeholder="0" required>
+          <button type="button" data-paso="0.5" aria-label="Medio más">+</button>
+        </div>
+        <label for="t-fiasp">Hora de la inyección</label>
+        <input id="t-fiasp" type="datetime-local" required>
+        <label for="c-fiasp">Comida (opcional)</label>
+        <select id="c-fiasp"><option value="">Sin comida</option></select>
+        <label for="n-fiasp">Notas (opcional)</label>
+        <input id="n-fiasp" type="text" maxlength="500">
+        <button class="primario" type="submit">Guardar dosis</button>
+        <p class="suave pequeno">Si la pluma dice otra cosa, mandan su hora y sus unidades; la app pone la comida.</p>
+      </form>
+
+      <form id="f-hc" class="tarjeta" autocomplete="off">
+        <h2>Hidratos de corrección</h2>
+        <div class="chips" role="group" aria-label="Gramos rápidos">
+          <button type="button" data-g="10">10 g</button>
+          <button type="button" data-g="15">15 g</button>
+          <button type="button" data-g="20">20 g</button>
+          <button type="button" data-g="30">30 g</button>
+        </div>
+        <label for="hc-gramos">Gramos</label>
+        <input id="hc-gramos" type="text" inputmode="decimal" placeholder="15" required>
+        <label for="hc-motivo">Motivo</label>
+        <select id="hc-motivo">
+          <option value="hipoglucemia">Hipoglucemia</option>
+          <option value="picoteo">Picoteo</option>
+          <option value="ejercicio">Ejercicio</option>
+          <option value="otro">Otro</option>
+        </select>
+        <label for="hc-t">Hora</label>
+        <input id="hc-t" type="datetime-local" required>
+        <button class="primario" type="submit">Guardar hidratos</button>
+      </form>
+
+      <section class="tarjeta">
+        <h2>Últimas 48 h</h2>
+        <ul id="historial" class="lista"></ul>
+      </section>
+    </div>
+
+    <!-- ============================================================ Tresiba -->
+    <div id="v-tresiba" class="vista oculto">
+      <section class="tarjeta">
+        <h2>Tresiba</h2>
+        <p id="tr-vigente" class="iob-texto"></p>
+        <p class="suave pequeno">Se da por puesta cada día a esa hora. Si cambias la dosis o la hora, guárdalo aquí: el historial no se borra.</p>
+      </section>
+      <form id="f-tresiba" class="tarjeta" autocomplete="off">
+        <h2>Cambiar dosis u hora</h2>
+        <label for="tr-u">Unidades</label>
+        <input id="tr-u" type="text" inputmode="decimal" required>
+        <label for="tr-hora">Hora habitual</label>
+        <input id="tr-hora" type="time" required>
+        <label for="tr-desde">Desde</label>
+        <input id="tr-desde" type="datetime-local" required>
+        <label for="tr-notas">Notas (opcional)</label>
+        <input id="tr-notas" type="text" maxlength="500">
+        <button class="primario" type="submit">Guardar cambio</button>
+      </form>
+      <section class="tarjeta">
+        <h2>Historial</h2>
+        <ul id="tr-historial" class="lista"></ul>
+      </section>
+    </div>
+
+    <!-- ============================================================ revisar -->
+    <div id="v-revisar" class="vista oculto">
+      <section class="tarjeta">
+        <h2>Dosis por revisar</h2>
+        <p class="suave pequeno">Mientras no decidas, cada dosis dudosa cuenta en la insulina activa (lo más prudente).</p>
+        <ul id="revisar-lista" class="lista"></ul>
+      </section>
+    </div>
+
+    <p id="msg" class="toast oculto" role="status"></p>
+
+    <nav class="nav" aria-label="Secciones">
+      <button data-ir="panel" class="activo">Panel</button>
+      <button data-ir="registrar">Registrar</button>
+      <button data-ir="tresiba">Tresiba</button>
+      <button data-ir="revisar">Revisar <span id="badge" class="badge oculto"></span></button>
+    </nav>
   </main>
 </body>
 </html>
