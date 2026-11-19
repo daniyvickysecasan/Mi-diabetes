@@ -127,6 +127,28 @@ docker compose run --rm api python -m comun.metricas --desde 2026-11-04 --hasta 
 
 Compara TIR, GMI y CV con el informe del mismo periodo (criterio: TIR a menos de 1 punto, GMI a menos de 0,1).
 
+## Fase 2: dosis de la pluma leídas solas de LibreView
+
+El recolector `recolector-pluma` pide cada 10 minutos a la web de LibreView el informe "Registro diario",
+que trae la hora y las unidades de cada inyección de la pluma (sin los cebados marcados en LibreLink).
+Es una API no oficial: si LibreView la cambia, el panel lo avisa y siguen valiendo la app y el CSV.
+
+1. En `despliegue\.env` rellena `LIBREVIEW_EMAIL` y `LIBREVIEW_PASSWORD` (los de libreview.com).
+   Deja `NIGHTSCOUT_TOKEN_ESCRITURA` vacío la primera vez: así las dosis solo van a la base.
+2. Arráncalo:
+   ```powershell
+   docker compose build
+   docker compose --profile pluma up -d
+   ```
+3. Abre la app en el iPhone. Saldrá el aviso "LibreView pide el código del SMS": pulsa
+   **Enviarme el SMS** y escribe el código que te llegue. Desde ahí va solo; LibreView recuerda el
+   dispositivo (unas dos semanas) y, cuando vuelva a pedirlo, la app te lo dirá igual.
+4. Comprueba: `docker compose logs --tail 20 recolector-pluma` debe decir "informe: N dosis nuevas".
+5. Retraso medido: `docker compose run --rm recolector-pluma python -m servicios.recoleccion.pluma_cli retraso`.
+
+Si en una misma hora te pinchas dos veces, LibreView solo da la suma de esa hora: esas dosis no se
+reparten a ojo y se quedan esperando a la app o al CSV.
+
 ## Probar sin datos reales
 
 ```powershell

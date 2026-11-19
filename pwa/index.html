@@ -51,6 +51,18 @@
         <button class="secundario" data-ir="registrar" data-foco="hc-gramos">+ Hidratos de corrección</button>
       </div>
 
+      <div id="aviso-pluma" class="aviso aviso-pluma oculto" role="status"></div>
+
+      <div id="aviso-libreview" class="aviso aviso-pluma oculto" role="status">
+        <p id="lv-texto"></p>
+        <button id="lv-sms" class="primario oculto" type="button">Enviarme el SMS</button>
+        <form id="lv-form" class="oculto">
+          <input id="lv-codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,8}"
+                 maxlength="8" placeholder="Código del SMS" aria-label="Código del SMS">
+          <button class="primario" type="submit">Enviar código</button>
+        </form>
+      </div>
+
       <section class="tarjeta">
         <h2>Insulina activa</h2>
         <div class="iob"><span id="iob">--</span> <span class="suave unidad">U de Fiasp</span></div>
@@ -133,14 +145,16 @@
       <section class="tarjeta">
         <h2>Tresiba</h2>
         <p id="tr-vigente" class="iob-texto"></p>
-        <p class="suave pequeno">Se da por puesta cada día a esa hora. Si cambias la dosis o la hora, guárdalo aquí: el historial no se borra.</p>
+        <p class="suave pequeno">Se da por puesta cada día dentro de esa franja. Si cambias la dosis o la franja, guárdalo aquí: el historial no se borra.</p>
       </section>
       <form id="f-tresiba" class="tarjeta" autocomplete="off">
-        <h2>Cambiar dosis u hora</h2>
+        <h2>Cambiar dosis o franja horaria</h2>
         <label for="tr-u">Unidades</label>
         <input id="tr-u" type="text" inputmode="decimal" required>
-        <label for="tr-hora">Hora habitual</label>
-        <input id="tr-hora" type="time" required>
+        <div class="franja">
+          <div><label for="tr-hora">Desde las</label><input id="tr-hora" type="time" required></div>
+          <div><label for="tr-hora-fin">Hasta las</label><input id="tr-hora-fin" type="time" required></div>
+        </div>
         <label for="tr-desde">Desde</label>
         <input id="tr-desde" type="datetime-local" required>
         <label for="tr-notas">Notas (opcional)</label>

@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api import auth, dosis, glucosa
+from api import auth, dosis, glucosa, libreview
 from comun.ajustes import Ajustes
 from comun.bd import conectar
 
@@ -32,6 +32,8 @@ def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
         r.headers["Permissions-Policy"] = "camera=(self), geolocation=(), microphone=()"
         if request.url.path.startswith(("/api", "/auth")):
             r.headers["Cache-Control"] = "no-store"
+        else:   # la PWA: el navegador debe revalidar siempre, para no mezclar HTML nuevo con JS viejo
+            r.headers["Cache-Control"] = "no-cache"
         return r
 
     @app.get("/salud", include_in_schema=False)
@@ -46,6 +48,7 @@ def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(glucosa.router)
     app.include_router(dosis.router)
+    app.include_router(libreview.router)
     app.mount("/", StaticFiles(directory=PWA, html=True), name="pwa")
     return app
 

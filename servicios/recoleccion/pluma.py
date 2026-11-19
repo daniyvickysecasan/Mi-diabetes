@@ -99,6 +99,20 @@ def guardar_dosis(con, dosis: list[DosisPluma], modo: str, ahora: datetime | Non
     return res
 
 
+def guardar_horas_ambiguas(con, horas: list[dict], serie_pluma: str | None = None) -> int:
+    """Horas con varias inyecciones: LibreView solo da la suma de la hora, así que no se inventa el
+    reparto. Se guardan aparte (horas_pluma_libreview) para que las cubran la app o el CSV."""
+    for h in horas:
+        con.execute(
+            """INSERT INTO horas_pluma_libreview (hora, inyecciones, unidades_total, serie_pluma)
+               VALUES (%s, %s, %s, %s)
+               ON CONFLICT (hora) DO UPDATE SET inyecciones = EXCLUDED.inyecciones,
+                   unidades_total = EXCLUDED.unidades_total, serie_pluma = EXCLUDED.serie_pluma,
+                   actualizada_en = now()""",
+            (h["hora"], h["inyecciones"], h["unidades_total"], serie_pluma))
+    return len(horas)
+
+
 def conciliar(con) -> dict | None:
     """Llama a la conciliación del hilo de dosis si ya existe (comun.conciliacion)."""
     try:
@@ -165,8 +179,10 @@ def importar(con, fuente: FuenteDosis, desde: datetime, hasta: datetime, modo: s
     inicio = ahora_utc()
     try:
         leidas = fuente.dosis(desde, hasta)
+        horas = getattr(fuente, "horas_ambiguas", list)()   # solo la fuente del informe las tiene
         with con.transaction():
             r = guardar_dosis(con, leidas, modo, ahora=ahora)
+            r["horas_ambiguas"] = guardar_horas_ambiguas(con, horas, getattr(fuente, "serie_pluma", None))
             c = conciliar(con)
             _registrar(con, modo, desde, hasta, inicio, r)
     except Exception as e:

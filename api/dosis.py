@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from api.deps import requiere_sesion
+from comun import aviso_pluma as AP
 from comun import conciliacion as C
 from comun import metricas as M
 from comun import tresiba as T
@@ -60,7 +61,9 @@ class CambioComida(BaseModel):
 
 class NuevaTresiba(BaseModel):
     unidades: float = Field(gt=0, lt=1000)
-    hora_local: time
+    hora_local: time                     # inicio de la franja
+    hora_fin_local: time                 # fin de la franja: obligatorio, para que una versión vieja
+                                         # de la app no guarde en silencio una franja de anchura cero
     vigente_desde: datetime | None = None
     notas: str | None = Field(default=None, max_length=500)
 
@@ -192,14 +195,17 @@ def ver_tresiba(con=SESION):
     ahora = _ahora()
     prox = T.programadas_bd(con, ahora - timedelta(days=1), ahora + timedelta(days=2))
     return {"vigente": T.vigente(con, ahora), "historial": T.historial(con),
-            "programadas": [{"ts": p["ts"].isoformat(), "unidades": p["unidades"]} for p in prox]}
+            "programadas": [{"ts": p["ts"].isoformat(), "ts_fin": p["ts_fin"].isoformat(),
+                             "ts_estimada": p["ts_estimada"].isoformat(), "unidades": p["unidades"]}
+                            for p in prox]}
 
 
 @router.post("/tresiba")
 def cambiar_tresiba(t: NuevaTresiba, con=SESION):
     desde = _con_zona(t.vigente_desde) if t.vigente_desde else _ahora()
     try:
-        return {"vigente": T.guardar(con, t.unidades, t.hora_local, desde, t.notas)}
+        return {"vigente": T.guardar(con, t.unidades, t.hora_local, desde, t.notas,
+                                       hora_fin_local=t.hora_fin_local)}
     except psycopg.errors.UniqueViolation:
         raise HTTPException(409, "Ya hay un cambio con esa misma fecha y hora")
 
@@ -216,7 +222,8 @@ def metricas(dias: int = Query(14, ge=1, le=90), con=SESION):
     return M.metricas(con, hasta - timedelta(days=dias), hasta)
 
 
-def resumen_panel(con, ahora: datetime) -> dict:
+def resumen_panel(con, ahora: datetime, aviso_pluma_horas: float = AP.UMBRAL_HORAS,
+                  aviso_pluma_margen_min: int = AP.MARGEN_MIN) -> dict:
     """Lo que añade la fase 2 al panel."""
     pend = con.execute(   # una pareja cuenta como un solo caso
         """SELECT count(DISTINCT LEAST(id, COALESCE(dosis_par_id, id))) AS n FROM dosis WHERE requiere_revision"""
@@ -227,6 +234,7 @@ def resumen_panel(con, ahora: datetime) -> dict:
         "insulina_activa": insulina_activa_bd(con, ahora),
         "metricas_14d": M.metricas(con, ahora - timedelta(days=14), ahora),
         "por_revisar": pend,
+        "aviso_pluma": AP.evaluar_bd(con, ahora, aviso_pluma_horas, aviso_pluma_margen_min),
         "tresiba": T.vigente(con, ahora),
         "ultimas_dosis": [_dosis_json(f) for f in ultimas],
         "curva": {"pico_min": FIASP.pico_min, "duracion_min": FIASP.duracion_min},

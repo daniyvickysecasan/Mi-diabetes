@@ -9,7 +9,7 @@ COPY api ./api
 COPY servicios ./servicios
 COPY herramientas ./herramientas
 COPY pwa ./pwa
-RUN useradd --system --uid 10001 app
+RUN useradd --system --uid 10001 app && mkdir -p /datos/libreview && chown app /datos/libreview && chmod 700 /datos/libreview
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

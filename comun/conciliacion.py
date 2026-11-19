@@ -86,6 +86,18 @@ def calcular(filas: list[dict]) -> dict[int, Resultado]:
             res[f["id"]] = Resultado("descartada", None, False, "Marcada como cebado en LibreView: no cuenta")
     libres = [f for f in libres if f["id"] not in res]
 
+    # 0b. La misma dosis ya descartada por Daniel por otra vía de la pluma (p. ej. la demostración
+    #     al estrenar la pluma descartada en el CSV que luego llega por la API): también se descarta.
+    descartadas = [f for f in fijas if _es_pluma(f) and f["estado_conciliacion"] == "descartada"]
+    for f in [x for x in libres if _es_pluma(x)]:
+        cand = [c for c in descartadas if c["origen"] != f["origen"] and _iguales(c["unidades"], f["unidades"])
+                and abs(c["ts"] - f["ts"]) <= VENTANA_DUPLICADO]
+        if cand:
+            c = min(cand, key=lambda c: (abs(c["ts"] - f["ts"]), c["id"]))
+            res[f["id"]] = Resultado("descartada", c["id"], False,
+                                     "La misma dosis ya la descartaste al revisar (llegó por otra vía): no cuenta")
+    libres = [f for f in libres if f["id"] not in res]
+
     # 1. Duplicados entre la API y el CSV.
     canonicas = [f for f in fijas if _es_pluma(f) and f["estado_conciliacion"] != "descartada"]
     absorbe: set[int] = set()

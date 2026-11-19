@@ -92,17 +92,47 @@ def test_hidratos_de_correccion(cli):
 def test_tresiba(cli):
     assert cli.get("/api/tresiba").json()["vigente"] is None
     desde = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "vigente_desde": desde})
+    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "hora_fin_local": "08:00",
+                                       "vigente_desde": desde})
     assert r.status_code == 200 and r.json()["vigente"]["unidades"] == 34
-    assert cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "vigente_desde": desde}
-                    ).status_code == 409
+    assert cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "hora_fin_local": "08:00",
+                                          "vigente_desde": desde}).status_code == 409
     t = cli.get("/api/tresiba").json()
     assert t["vigente"]["hora_local"] == "08:00" and len(t["programadas"]) in (2, 3)
+    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "07:00", "hora_fin_local": "10:00"})
+    assert r.json()["vigente"]["hora_fin_local"] == "10:00"
+    assert "ts_estimada" in cli.get("/api/tresiba").json()["programadas"][0]
     assert cli.get("/api/panel").json()["tresiba"]["unidades"] == 34
 
 
 def test_panel_trae_lo_de_la_fase_2(cli):
     p = cli.get("/api/panel").json()
-    for k in ("insulina_activa", "metricas_14d", "por_revisar", "tresiba", "ultimas_dosis"):
+    for k in ("insulina_activa", "metricas_14d", "por_revisar", "tresiba", "ultimas_dosis", "aviso_pluma"):
         assert k in p
     assert p["insulina_activa"]["unidades"] == 0
+    assert p["aviso_pluma"]["motivo"] == "sin_lecturas"     # aún no ha llegado nada de la pluma
+
+
+def test_panel_avisa_de_leer_la_pluma_y_respeta_el_umbral(con, ajustes):
+    from dataclasses import replace
+    con.execute("""INSERT INTO dosis (ts, unidades, insulina, origen, id_externo)
+                   VALUES (now() - interval '5 hours', 4, 'fiasp', 'pluma_libreview', 'p1')""")
+    c = TestClient(crear_app(replace(ajustes, aviso_pluma_horas=4)), base_url=ORIGEN)
+    assert _alta(c, Autenticador(ajustes.rp_id, ORIGEN)).status_code == 200
+    a = c.get("/api/panel").json()["aviso_pluma"]
+    assert a["motivo"] == "sin_lecturas" and "5 h" in a["texto"]
+    c2 = TestClient(crear_app(ajustes), base_url=ORIGEN, cookies=c.cookies)   # misma sesión, umbral de 12 h
+    assert c2.get("/api/panel").json()["aviso_pluma"] is None
+
+
+def test_tresiba_sin_fin_de_franja_se_rechaza(cli):
+    """Una versión vieja de la app (sin el campo "hasta") no debe guardar una franja de anchura cero."""
+    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00"})
+    assert r.status_code == 422
+    assert cli.get("/api/tresiba").json()["vigente"] is None
+
+
+def test_pwa_se_revalida_siempre(cli):
+    for ruta in ("/", "/app.js", "/sw.js"):
+        assert cli.get(ruta).headers["cache-control"] == "no-cache"
+    assert cli.get("/api/tresiba").headers["cache-control"] == "no-store"

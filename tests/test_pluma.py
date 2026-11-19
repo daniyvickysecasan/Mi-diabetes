@@ -1,19 +1,18 @@
 """Recolector de la pluma: guardado idempotente, cebados, envío a Nightscout y retraso.
 
-LibreView siempre simulado (FuenteFalsa); Nightscout con el simulador de herramientas/.
+LibreView siempre simulado (FuenteFalsa; la web simulada está en test_libreview_web.py); Nightscout con el simulador de herramientas/.
 """
 from datetime import timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from comun.origen import es_origen_propio
 from herramientas.nightscout_simulado import crear_app as crear_ns
 from servicios.recoleccion import pluma
-from servicios.recoleccion.libreview import ClienteLibreView, ErrorLibreView, forma, normalizar_registro
+from servicios.recoleccion.libreview import ErrorLibreView
 from servicios.recoleccion.nightscout import ClienteNightscout, EscritorNightscout
 from servicios.recoleccion.recolector import guardar_tratamientos
 from tests.conftest import TOKEN
@@ -180,59 +179,6 @@ def test_historico_no_cuenta_en_el_retraso(con, ahora):
 
 
 # ------------------------------------------------------------------ cliente de LibreView
-def test_normalizar_prefiere_hora_utc():
-    r = {"FactoryTimestamp": "11/18/2026 7:15:00 PM", "Timestamp": "11/18/2026 8:15:00 PM", "units": 4.5}
-    d = normalizar_registro(r, MADRID)
-    assert d.ts.isoformat() == "2026-11-18T19:15:00+00:00" and d.unidades == Decimal("4.50")
-
-
-def test_normalizar_hora_local_con_cambio_de_hora():
-    d = normalizar_registro({"Timestamp": "2026-07-01T14:00:00", "units": 2}, MADRID)
-    assert d.ts.astimezone(timezone.utc).hour == 12          # verano: UTC+2
-    d = normalizar_registro({"Timestamp": "2026-12-01T14:00:00", "units": 2}, MADRID)
-    assert d.ts.astimezone(timezone.utc).hour == 13          # invierno: UTC+1
-
-
-def test_normalizar_descarta_lo_que_no_es_dosis():
-    assert normalizar_registro({"Timestamp": "2026-11-18T10:00:00"}, MADRID) is None
-    assert normalizar_registro({"units": 3}, MADRID) is None
-    assert normalizar_registro({"Timestamp": "basura", "units": 3}, MADRID) is None
-
-
-def test_forma_no_deja_ver_valores():
-    f = forma({"data": [{"units": 4.5, "nombre": "Daniel", "ok": True}], "status": 0})
-    assert "4.5" not in str(f) and "Daniel" not in str(f)
-    assert f["data"][0] == "1 elementos"
-
-
-def test_cliente_libreview_sigue_la_region_y_no_filtra_secretos():
-    vistas = []
-
-    def responder(req: httpx.Request):
-        vistas.append(str(req.url))
-        if req.url.host == "api.libreview.io":
-            return httpx.Response(200, json={"status": 0, "data": {"redirect": True, "region": "eu"}})
-        if req.url.path == "/llu/auth/login":
-            return httpx.Response(200, json={"status": 0, "data": {
-                "user": {"id": "u-1"}, "authTicket": {"token": "tok-1", "expires": 0}}})
-        assert req.headers["Authorization"] == "Bearer tok-1"
-        assert len(req.headers["Account-Id"]) == 64
-        return httpx.Response(500)
-
-    c = ClienteLibreView("yo@ejemplo.test", "clave-secreta", cliente=httpx.Client(transport=httpx.MockTransport(responder)))
-    c.entrar()
-    assert c.base == "https://api-eu.libreview.io"
-    with pytest.raises(ErrorLibreView) as e:
-        c.obtener("/llu/connections")
-    assert "clave-secreta" not in str(e.value) and "tok-1" not in str(e.value)
-
-
-def test_sin_endpoint_confirmado_no_inventa_dosis():
-    c = ClienteLibreView("a@b.test", "x", cliente=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))))
-    with pytest.raises(ErrorLibreView, match="sin confirmar"):
-        c.dosis(pluma.ahora_utc() - timedelta(days=1), pluma.ahora_utc())
-
-
 def test_serie_y_cebado_descartado_por_la_conciliacion(con, ahora):
     f = FuenteFalsa([_d(ahora - timedelta(minutes=30), 2, cebado=True), _d(ahora - timedelta(minutes=29), 6)])
     pluma.ciclo(con, f, 48, ahora=ahora)

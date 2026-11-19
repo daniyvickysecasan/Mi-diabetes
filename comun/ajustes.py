@@ -30,14 +30,20 @@ class Ajustes:
     libreview_email: str = ""
     libreview_password: str = ""
     libreview_region: str = ""            # vacío = la que diga LibreView al entrar (p. ej. "eu")
-    libreview_version: str = "4.16.0"     # versión de app que se anuncia en las cabeceras
-    intervalo_pluma_s: int = 300
+    libreview_version: str = "3.27.0.42"  # versión de la web de LibreView que se anuncia en las cabeceras
+    libreview_sesion: str = "/datos/libreview/sesion.json"  # token de dispositivo de confianza (volumen local)
+    intervalo_informe_s: int = 600        # cada cuánto se pide el informe a LibreView
+    intervalo_pluma_s: int = 30           # cada cuánto mira la base (SMS pedido, código escrito)
     solape_pluma_h: int = 48              # relee los dos últimos días: la pluma sube con retraso
 
     # Rangos (mg/dL), consenso internacional
     rango_bajo: int = 70
     rango_alto: int = 180
     zona_horaria: str = "Europe/Madrid"
+
+    # Aviso "Lee la pluma" (comun/aviso_pluma.py)
+    aviso_pluma_horas: float = 12.0       # sin dosis de la pluma durante más de esto = avisar
+    aviso_pluma_margen_min: int = 45      # dosis apuntada en la app sin llegar de la pluma tras esto = avisar
 
     # Passkey / sesión
     rp_id: str = "localhost"
@@ -62,12 +68,16 @@ class Ajustes:
             libreview_email=e("LIBREVIEW_EMAIL") or "",
             libreview_password=e("LIBREVIEW_PASSWORD") or "",
             libreview_region=(e("LIBREVIEW_REGION") or "").strip().lower(),
-            libreview_version=e("LIBREVIEW_VERSION") or "4.16.0",
-            intervalo_pluma_s=int(e("INTERVALO_PLUMA_S") or 300),
+            libreview_version=e("LIBREVIEW_VERSION") or "3.27.0.42",
+            libreview_sesion=e("LIBREVIEW_SESION") or "/datos/libreview/sesion.json",
+            intervalo_informe_s=int(e("INTERVALO_INFORME_S") or 600),
+            intervalo_pluma_s=int(e("INTERVALO_PLUMA_S") or 30),
             solape_pluma_h=int(e("SOLAPE_PLUMA_H") or 48),
             rango_bajo=int(e("RANGO_BAJO") or 70),
             rango_alto=int(e("RANGO_ALTO") or 180),
             zona_horaria=e("ZONA_HORARIA") or "Europe/Madrid",
+            aviso_pluma_horas=float(e("AVISO_PLUMA_HORAS") or 12),
+            aviso_pluma_margen_min=int(e("AVISO_PLUMA_MARGEN_MIN") or 45),
             rp_id=e("RP_ID") or "localhost",
             rp_nombre=e("RP_NOMBRE") or "Mi Diabetes",
             origenes=origenes,

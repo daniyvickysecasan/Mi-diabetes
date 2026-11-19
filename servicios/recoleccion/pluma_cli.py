@@ -1,10 +1,11 @@
-"""Línea de comandos del recolector de la pluma (LibreView → base → Nightscout).
+"""Línea de comandos del recolector de la pluma (web de LibreView → base → Nightscout).
 
-  python -m servicios.recoleccion.pluma_cli sondear            # forma de las respuestas, sin datos
-  python -m servicios.recoleccion.pluma_cli ciclo              # una pasada (últimas SOLAPE_PLUMA_H horas)
-  python -m servicios.recoleccion.pluma_cli servicio           # bucle cada INTERVALO_PLUMA_S
-  python -m servicios.recoleccion.pluma_cli historico --dias 90
+  python -m servicios.recoleccion.pluma_cli servicio           # bucle: SMS desde la app + informe cada INTERVALO_INFORME_S
+  python -m servicios.recoleccion.pluma_cli ciclo              # una vuelta (últimos 14 días, como la web)
+  python -m servicios.recoleccion.pluma_cli historico [--dias 14]
   python -m servicios.recoleccion.pluma_cli retraso [--dias 7] # retraso inyección → visto, y frente a la app
+
+La primera vez LibreView pide el código del SMS: la app muestra el aviso con el botón "Enviarme el SMS".
 """
 import argparse
 import json
@@ -12,12 +13,11 @@ import logging
 import signal
 import sys
 import time
-from datetime import timedelta
 
 from comun.ajustes import Ajustes
 from comun.bd import conectar
-from servicios.recoleccion import pluma
-from servicios.recoleccion.libreview import ClienteLibreView, sondear
+from servicios.recoleccion import pluma, sondeo_libreview
+from servicios.recoleccion.libreview import ClienteLibreView
 from servicios.recoleccion.nightscout import EscritorNightscout
 
 log = logging.getLogger("pluma")
@@ -29,7 +29,8 @@ def _imprimir(r) -> None:
 
 def _cliente(aj: Ajustes) -> ClienteLibreView:
     return ClienteLibreView(aj.libreview_email, aj.libreview_password, aj.libreview_region,
-                            aj.libreview_version, zona=aj.zona_horaria)
+                            ruta_sesion=aj.libreview_sesion, zona=aj.zona_horaria,
+                            version_web=aj.libreview_version)
 
 
 def _escritor(aj: Ajustes):
@@ -45,11 +46,10 @@ def main(argv=None) -> int:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     p = argparse.ArgumentParser(prog="pluma")
     sub = p.add_subparsers(dest="orden", required=True)
-    sub.add_parser("sondear", help="muestra la forma de las respuestas de LibreView (sin valores)")
-    sub.add_parser("ciclo", help="una pasada")
-    sub.add_parser("servicio", help="bucle cada INTERVALO_PLUMA_S")
+    sub.add_parser("ciclo", help="una vuelta")
+    sub.add_parser("servicio", help="bucle continuo")
     h = sub.add_parser("historico", help="importa los últimos días (sin medir retraso)")
-    h.add_argument("--dias", type=int, default=90)
+    h.add_argument("--dias", type=int, default=14)
     r = sub.add_parser("retraso", help="informe de retraso")
     r.add_argument("--dias", type=int, default=7)
     a = p.parse_args(argv)
@@ -59,36 +59,36 @@ def main(argv=None) -> int:
         with conectar(aj.database_url, autocommit=True) as con:
             _imprimir(pluma.informe_retraso(con, a.dias))
         return 0
-    lv = _cliente(aj)
-    if a.orden == "sondear":
-        _imprimir(sondear(lv))
+    lv, escritor = _cliente(aj), _escritor(aj)
+    if a.orden in ("ciclo", "historico"):
+        dias, modo = (a.dias, "historico") if a.orden == "historico" else (14, "incremental")
+        with conectar(aj.database_url, autocommit=True) as con:
+            _imprimir(sondeo_libreview.vuelta(con, lv, escritor, dias=dias, modo=modo))
         return 0
-    escritor = _escritor(aj)
-    if a.orden == "historico":
-        ahora = pluma.ahora_utc()
-        with conectar(aj.database_url, autocommit=True) as con:
-            _imprimir(pluma.importar(con, lv, ahora - timedelta(days=a.dias), ahora, "historico", escritor))
-    elif a.orden == "ciclo":
-        with conectar(aj.database_url, autocommit=True) as con:
-            _imprimir(pluma.ciclo(con, lv, aj.solape_pluma_h, escritor))
-    elif a.orden == "servicio":
-        parar = {"si": False}
-        signal.signal(signal.SIGTERM, lambda *_: parar.update(si=True))
-        log.info("Recolector de la pluma cada %s s", aj.intervalo_pluma_s)
-        while not parar["si"]:
-            t0 = time.monotonic()
-            try:
-                with conectar(aj.database_url, autocommit=True) as con:
-                    res = pluma.ciclo(con, lv, aj.solape_pluma_h, escritor)
-                log.info("ciclo: %s dosis nuevas, %s enviadas a Nightscout, %s errores de envío",
-                         res["dosis"]["insertadas"], res["nightscout"].get("enviadas", 0),
-                         res["nightscout"].get("errores", 0))
-            except Exception as e:  # LibreView caído o cambiado: se registra y se sigue
-                log.error("ciclo fallido: %s", e)
-            espera = max(30.0, aj.intervalo_pluma_s - (time.monotonic() - t0))
-            while espera > 0 and not parar["si"]:
-                time.sleep(min(1.0, espera))
-                espera -= 1.0
+
+    parar = {"si": False}
+    signal.signal(signal.SIGTERM, lambda *_: parar.update(si=True))
+    log.info("Recolector de la pluma: mira la base cada %s s y pide el informe cada %s s",
+             aj.intervalo_pluma_s, aj.intervalo_informe_s)
+    ultimo_informe = float("-inf")
+    while not parar["si"]:
+        toca = time.monotonic() - ultimo_informe >= aj.intervalo_informe_s
+        try:
+            with conectar(aj.database_url, autocommit=True) as con:
+                res = sondeo_libreview.vuelta(con, lv, escritor, sincronizar=toca)
+            if res["accion"] in ("sincronizado", "error"):
+                ultimo_informe = time.monotonic()    # tras un error también se espera un intervalo
+            if res["accion"] == "sincronizado":
+                log.info("informe: %s dosis nuevas, %s horas con varias inyecciones, %s enviadas a Nightscout",
+                         res["dosis"]["insertadas"], res["dosis"].get("horas_ambiguas", 0),
+                         res["nightscout"].get("enviadas", 0))
+        except Exception as e:   # base caída o fallo inesperado: se registra y se sigue
+            log.error("vuelta fallida: %s", e)
+            ultimo_informe = time.monotonic()
+        espera = float(aj.intervalo_pluma_s)
+        while espera > 0 and not parar["si"]:
+            time.sleep(min(1.0, espera))
+            espera -= 1.0
     return 0
 
 

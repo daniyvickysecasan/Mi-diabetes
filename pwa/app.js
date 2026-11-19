@@ -148,6 +148,7 @@ async function refrescar() {
     pintarTir($("tir24"), "24 h", p.tir_24h);
     pintarTir($("tir14"), "14 días", p.tir_14d);
     pintarFase2(p);
+    estadoLibreView();
     const r = p.recoleccion;
     $("recoleccion").textContent = r.error ? `Recolección con error: ${r.error}` :
       r.ultima ? `Recolectado a las ${hora(r.ultima)}` : "Recolección sin ejecutar";
@@ -253,6 +254,50 @@ async function registrar(ruta, cuerpo, texto) {
   refrescarVista();
 }
 
+// ------------------------------------------------------------------ LibreView (código del SMS)
+// La app solo deja la petición en la base; el recolector la atiende en menos de un minuto.
+let sondeoLv = null, esperandoDesde = 0;
+
+function pintarLibreView(e) {
+  const caja = $("aviso-libreview");
+  caja.classList.toggle("oculto", !e.mensaje);
+  $("lv-texto").textContent = e.mensaje || "";
+  $("lv-sms").classList.toggle("oculto", e.accion !== "pedir_sms");
+  const f = $("lv-form");
+  const ver = e.accion === "codigo";
+  if (ver && f.classList.contains("oculto")) setTimeout(() => $("lv-codigo").focus(), 50);
+  f.classList.toggle("oculto", !ver);
+  // Mientras el recolector trabaja, mira cada 3 s (máximo 2 min).
+  clearTimeout(sondeoLv);
+  if (e.accion !== "esperar") { esperandoDesde = 0; return; }
+  esperandoDesde ||= Date.now();
+  if (Date.now() - esperandoDesde < 120e3) sondeoLv = setTimeout(estadoLibreView, 3000);
+}
+
+async function estadoLibreView() {
+  try { pintarLibreView(await pedir("/api/libreview/estado")); } catch { /* sin conexión: se reintenta */ }
+}
+
+async function accionLibreView(ruta, cuerpo) {
+  try {
+    esperandoDesde = 0;
+    pintarLibreView(await pedir(ruta, cuerpo));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(e.message, true);
+    estadoLibreView();
+  }
+}
+
+$("lv-sms").addEventListener("click", () => accionLibreView("/api/libreview/sms", {}));
+$("lv-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const codigo = $("lv-codigo").value.replace(/\D/g, "");
+  if (codigo.length < 4) return aviso("El código son de 4 a 8 cifras", true);
+  $("lv-codigo").value = "";
+  accionLibreView("/api/libreview/codigo", { codigo });
+});
+
 // ------------------------------------------------------------------ panel (fase 2)
 function pintarFase2(p) {
   const i = p.insulina_activa;
@@ -260,6 +305,9 @@ function pintarFase2(p) {
   const n = i.dosis.length;
   $("iob-detalle").textContent = n ? `${n} dosis en las últimas 5 h · curva Fiasp (pico ${p.curva.pico_min} min, ${p.curva.duracion_min / 60} h)` +
     (i.con_dudas ? " · incluye dosis sin confirmar por la pluma" : "") : "Sin dosis de Fiasp en las últimas 5 h";
+  const ap = $("aviso-pluma");
+  ap.classList.toggle("oculto", !p.aviso_pluma);
+  ap.textContent = p.aviso_pluma ? p.aviso_pluma.texto : "";
   const r = $("aviso-revisar");
   r.classList.toggle("oculto", !p.por_revisar);
   r.textContent = p.por_revisar ? `${p.por_revisar} dosis por revisar →` : "";
@@ -328,15 +376,20 @@ function enviarHidratos(ev) {
 }
 
 // ------------------------------------------------------------------ Tresiba
+const franja = (c) => (!c.hora_fin_local || c.hora_fin_local === c.hora_local
+  ? `a las ${c.hora_local}` : `entre las ${c.hora_local} y las ${c.hora_fin_local}`);
 async function cargarTresiba() {
   if (!$("tr-desde").dataset.tocado) $("tr-desde").value = valorLocal();
   try {
     const t = await pedir("/api/tresiba");
     const v = t.vigente;
-    $("tr-vigente").textContent = v ? `${num(v.unidades)} U cada día a las ${v.hora_local}` : "Sin configurar todavía.";
-    if (v && !$("tr-u").value) { $("tr-u").value = String(v.unidades).replace(".", ","); $("tr-hora").value = v.hora_local; }
+    $("tr-vigente").textContent = v ? `${num(v.unidades)} U cada día ${franja(v)}` : "Sin configurar todavía.";
+    if (v && !$("tr-u").value) {
+      $("tr-u").value = String(v.unidades).replace(".", ",");
+      $("tr-hora").value = v.hora_local; $("tr-hora-fin").value = v.hora_fin_local;
+    }
     $("tr-historial").replaceChildren(...(t.historial.length ? t.historial.map((h) =>
-      li(`Desde ${fechaHora(h.vigente_desde)}: ${num(h.unidades)} U a las ${h.hora_local}${h.notas ? ` · ${h.notas}` : ""}`))
+      li(`Desde ${fechaHora(h.vigente_desde)}: ${num(h.unidades)} U ${franja(h)}${h.notas ? ` · ${h.notas}` : ""}`))
       : [li("Sin cambios registrados", "suave")]));
   } catch (e) {
     if (e.estado === 401) return mostrar("entrada");
@@ -347,11 +400,12 @@ async function cargarTresiba() {
 async function enviarTresiba(ev) {
   ev.preventDefault();
   const u = leerNumero($("tr-u").value);
-  if (!(u > 0) || !$("tr-hora").value) return aviso("Faltan las unidades o la hora", true);
+  if (!(u > 0) || !$("tr-hora").value || !$("tr-hora-fin").value) return aviso("Faltan las unidades o la franja", true);
   try {
-    await pedir("/api/tresiba", { unidades: u, hora_local: $("tr-hora").value, vigente_desde: desdeLocal($("tr-desde").value),
+    await pedir("/api/tresiba", { unidades: u, hora_local: $("tr-hora").value, hora_fin_local: $("tr-hora-fin").value,
+      vigente_desde: desdeLocal($("tr-desde").value),
       notas: $("tr-notas").value.trim() || null });
-    aviso(`Tresiba: ${num(u)} U a las ${$("tr-hora").value}`);
+    aviso(`Tresiba: ${num(u)} U ${franja({ hora_local: $("tr-hora").value, hora_fin_local: $("tr-hora-fin").value })}`);
     $("tr-notas").value = ""; delete $("tr-desde").dataset.tocado;
     cargarTresiba();
   } catch (e) {

@@ -24,6 +24,10 @@ h1 { margin: 0 0 8px; } h2 { font-size: 1rem; margin: 0 0 8px; }
 .flecha { font-size: 2.2rem; }
 .aviso { margin: 12px auto 0; padding: 8px 12px; border-radius: 10px; background: rgba(239, 68, 68, .15);
          color: var(--bajo); max-width: 420px; }
+.aviso-pluma { background: rgba(245, 158, 11, .15); color: var(--alto); }
+#aviso-libreview p { margin: 0 0 8px; }
+#aviso-libreview form { display: grid; gap: 8px; }
+#aviso-libreview input { text-align: center; font-size: 1.4rem; letter-spacing: .2em; }
 svg { width: 100%; height: auto; display: block; }
 .tir { margin: 10px 0; }
 .tir .barra { display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: var(--fondo); }
@@ -86,3 +90,4 @@ select { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border:
 .badge { display: inline-block; min-width: 1.3em; padding: 0 .35em; border-radius: 1em; background: var(--alto);
          color: #000; font-size: .75rem; font-weight: 700; }
 .iob .unidad { font-size: 1rem; font-weight: 400; }
+.franja { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

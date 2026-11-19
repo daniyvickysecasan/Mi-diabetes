@@ -55,5 +55,5 @@ def panel(request: Request, con=SESION):
             "error": ultima["error"] if ultima else None,
             "hueco_abierto": {"desde": huecos["inicio"].isoformat(), "minutos": huecos["minutos"]} if huecos else None,
         },
-        **resumen_panel(con, hasta),
+        **resumen_panel(con, hasta, aj.aviso_pluma_horas, aj.aviso_pluma_margen_min),
     }
