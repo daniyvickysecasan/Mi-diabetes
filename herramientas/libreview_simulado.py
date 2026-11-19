@@ -4,6 +4,8 @@ Imita lo comprobado con la cuenta real: redirección de región, doble factor po
 dispositivo de confianza, renovación del token en cada respuesta (`ticket`), informe "Registro diario"
 que se espera por sondeo (con algún 503) y se sirve como HTML con el JSON {"Data": ...} incrustado.
 """
+import base64
+import hashlib
 import json
 import time
 from datetime import datetime, timezone
@@ -13,6 +15,11 @@ import httpx
 
 ID_USUARIO = "usuario-sintetico-1"
 SERIE_PLUMA = "PLUMAS"
+
+
+def _jwt(carga: dict) -> str:
+    b = lambda x: base64.urlsafe_b64encode(json.dumps(x).encode()).decode().rstrip("=")
+    return f"{b({'alg': 'HS256'})}.{b(carga)}.firma-sintetica"
 
 
 def _epoch_local(dt_local: datetime) -> int:
@@ -113,14 +120,18 @@ class LibreViewSimulado:
                 return httpx.Response(200, json={"status": 2, "error": {"message": "NotAuthenticated"}})
             if cuerpo.get("trustedDeviceToken") in self.confianza_valida:
                 return self._ok(self._entrada(), ticket=False)
-            parcial = self._nuevo("parcial")
+            parcial = _jwt({"id": ID_USUARIO, "n": self._nuevo("parcial")})
             self.parciales.add(parcial)
+            # Como la cuenta real (19-11-2026): el usuario del paso no trae id; va dentro del JWT.
             return httpx.Response(200, json={"status": 4, "data": {
-                "step": {"type": "verifyTwoFactor", "componentName": "TwoFactor"},
-                "user": {"id": ID_USUARIO}, "authTicket": {"token": parcial, "expires": 0}}})
+                "step": {"type": "2faVerify", "componentName": "TwoFactorVerify",
+                         "props": {"primaryMethod": "phone", "primaryValue": "+34600000123"}},
+                "user": {"accountType": "pat"}, "authTicket": {"token": parcial, "expires": 0}}})
         if ruta == "/auth/continue/2fa/sendcode":
             if bearer not in self.parciales:
                 return httpx.Response(401)
+            if req.headers.get("Account-Id") != hashlib.sha256(ID_USUARIO.encode()).hexdigest():
+                return httpx.Response(400, json={"status": 400, "error": {"message": "validation failed - 437"}})
             if self.fallar_sms:
                 return httpx.Response(400, json={"status": 4, "error": {"message": "RegionMismatch"},
                                                  "email": self.email})

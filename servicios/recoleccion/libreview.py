@@ -52,6 +52,22 @@ class NecesitaCodigo(ErrorLibreView):
     """LibreView pide el código del SMS (doble factor) para dejar entrar."""
 
 
+def _id_de_token(token: str | None) -> str | None:
+    """El id de la cuenta que lleva el JWT de LibreView (sin comprobar la firma: solo se usa para
+    la cabecera Account-Id, que la web también calcula a partir de él)."""
+    if not token or token.count(".") != 2:
+        return None
+    try:
+        import base64
+        carga = token.split(".")[1]
+        carga += "=" * (-len(carga) % 4)
+        datos = json.loads(base64.urlsafe_b64decode(carga))
+    except Exception:
+        return None
+    valor = datos.get("id") or datos.get("sub") or datos.get("accountId")
+    return str(valor) if valor else None
+
+
 def _base_region(region: str) -> str:
     return f"https://api-{region}.libreview.io" if region else BASE
 
@@ -197,13 +213,19 @@ class ClienteLibreView:
             tipo = (paso.get("type") if isinstance(paso, dict) else str(paso)) or ""
             ticket = d.get("authTicket") or datos.get("ticket") or {}
             self.sesion.token_parcial = ticket.get("token")
-            self.sesion.id_usuario = (d.get("user") or {}).get("id") or self.sesion.id_usuario
+            usuario = d.get("user") or {}
+            self.sesion.id_usuario = (usuario.get("id") or usuario.get("accountId")
+                                      or _id_de_token(self.sesion.token_parcial) or self.sesion.id_usuario)
             self.sesion.guardar(self.ruta)
             # Solo la forma (tipos y claves), nunca valores: sirve para ver qué pide LibreView.
             props = paso.get("props") if isinstance(paso, dict) else None
-            log.warning("LibreView pide un paso al entrar: status=%s tipo=%s componente=%s props=%s datos=%s",
+            log.warning("LibreView pide un paso al entrar: status=%s tipo=%s componente=%s props=%s datos=%s "
+                        "user=%s token_jwt=%s id_cuenta=%s",
                         estado, tipo or "-", (paso.get("componentName") if isinstance(paso, dict) else "-"),
-                        sorted(props) if isinstance(props, dict) else type(props).__name__, sorted(d))
+                        sorted(props) if isinstance(props, dict) else type(props).__name__, sorted(d),
+                        sorted(usuario) if isinstance(usuario, dict) else "-",
+                        bool(self.sesion.token_parcial and self.sesion.token_parcial.count(".") == 2),
+                        bool(self.sesion.id_usuario))
             if tipo.lower() in PASOS_EN_LA_WEB:
                 raise ErrorLibreView(f"LibreView pide un paso en la web ({tipo}): entra una vez en libreview.com")
             raise NecesitaCodigo("LibreView pide el código del SMS")
