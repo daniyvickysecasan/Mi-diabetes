@@ -98,6 +98,9 @@ def test_tresiba(cli):
                     ).status_code == 409
     t = cli.get("/api/tresiba").json()
     assert t["vigente"]["hora_local"] == "08:00" and len(t["programadas"]) in (2, 3)
+    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "07:00", "hora_fin_local": "10:00"})
+    assert r.json()["vigente"]["hora_fin_local"] == "10:00"
+    assert "ts_estimada" in cli.get("/api/tresiba").json()["programadas"][0]
     assert cli.get("/api/panel").json()["tresiba"]["unidades"] == 34
 
 
