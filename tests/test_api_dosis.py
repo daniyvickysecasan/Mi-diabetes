@@ -92,10 +92,11 @@ def test_hidratos_de_correccion(cli):
 def test_tresiba(cli):
     assert cli.get("/api/tresiba").json()["vigente"] is None
     desde = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "vigente_desde": desde})
+    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "hora_fin_local": "08:00",
+                                       "vigente_desde": desde})
     assert r.status_code == 200 and r.json()["vigente"]["unidades"] == 34
-    assert cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "vigente_desde": desde}
-                    ).status_code == 409
+    assert cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00", "hora_fin_local": "08:00",
+                                          "vigente_desde": desde}).status_code == 409
     t = cli.get("/api/tresiba").json()
     assert t["vigente"]["hora_local"] == "08:00" and len(t["programadas"]) in (2, 3)
     r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "07:00", "hora_fin_local": "10:00"})
@@ -109,3 +110,16 @@ def test_panel_trae_lo_de_la_fase_2(cli):
     for k in ("insulina_activa", "metricas_14d", "por_revisar", "tresiba", "ultimas_dosis"):
         assert k in p
     assert p["insulina_activa"]["unidades"] == 0
+
+
+def test_tresiba_sin_fin_de_franja_se_rechaza(cli):
+    """Una versión vieja de la app (sin el campo "hasta") no debe guardar una franja de anchura cero."""
+    r = cli.post("/api/tresiba", json={"unidades": 34, "hora_local": "08:00"})
+    assert r.status_code == 422
+    assert cli.get("/api/tresiba").json()["vigente"] is None
+
+
+def test_pwa_se_revalida_siempre(cli):
+    for ruta in ("/", "/app.js", "/sw.js"):
+        assert cli.get(ruta).headers["cache-control"] == "no-cache"
+    assert cli.get("/api/tresiba").headers["cache-control"] == "no-store"

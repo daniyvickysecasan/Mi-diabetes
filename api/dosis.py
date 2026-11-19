@@ -61,7 +61,8 @@ class CambioComida(BaseModel):
 class NuevaTresiba(BaseModel):
     unidades: float = Field(gt=0, lt=1000)
     hora_local: time                     # inicio de la franja
-    hora_fin_local: time | None = None   # fin de la franja (si falta, hora fija)
+    hora_fin_local: time                 # fin de la franja: obligatorio, para que una versión vieja
+                                         # de la app no guarde en silencio una franja de anchura cero
     vigente_desde: datetime | None = None
     notas: str | None = Field(default=None, max_length=500)
 

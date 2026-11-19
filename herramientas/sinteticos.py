@@ -83,6 +83,16 @@ def ahora_redondeado() -> datetime:
 
 
 # ------------------------------------------------------------------ CSV de LibreView (sintético)
+# Cabecera real de la exportación de LibreView en español (vista el 19-11-2026, sin datos).
+CABECERA_LIBREVIEW_ES_REAL = [
+    "Dispositivo", "Número de serie", "Sello de tiempo del dispositivo", "Tipo de registro",
+    "Historial de glucosa mg/dL", "Escaneo de glucosa mg/dL", "Insulina de acción rápida no numérica",
+    "Insulina de acción rápida (unidades)", "Alimento no numérico", "Carbohidratos (gramos)",
+    "Carbohidratos (porciones)", "Insulina de acción larga no numérica", "Insulina de acción larga (unidades)",
+    "Notas", "Tira reactiva para glucosa mg/dL", "Cuerpos cetónicos mmol/L", "Comida e insulina (unidades)",
+    "Insulina de corrección (unidades)", "Insulina del cambio de usuario (unidades)",
+    "Históricos de cuerpos cetónicos mmol/L", "Escanear cuerpos cetónicos mmol/L"]
+
 CABECERA_LIBREVIEW_ES = [
     "Dispositivo", "Número de serie", "Sello de tiempo del dispositivo", "Tipo de registro",
     "Historial de glucosa mg/dL", "Escaneo de glucosa mg/dL", "Insulina de acción rápida sin valor numérico",

@@ -32,6 +32,8 @@ def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
         r.headers["Permissions-Policy"] = "camera=(self), geolocation=(), microphone=()"
         if request.url.path.startswith(("/api", "/auth")):
             r.headers["Cache-Control"] = "no-store"
+        else:   # la PWA: el navegador debe revalidar siempre, para no mezclar HTML nuevo con JS viejo
+            r.headers["Cache-Control"] = "no-cache"
         return r
 
     @app.get("/salud", include_in_schema=False)

@@ -44,7 +44,7 @@ ALIAS = {
     "rapida": ["rapid acting insulin units", "insulina de accion rapida unidades", "insulina rapida unidades",
                "insulina de accion rapida u"],
     "lenta": ["long acting insulin units", "long acting insulin value units", "insulina de accion prolongada unidades",
-              "insulina de accion lenta unidades", "insulina lenta unidades"],
+              "insulina de accion lenta unidades", "insulina lenta unidades", "insulina de accion larga unidades"],
     "notas": ["notes", "notas"],
 }
 
