@@ -3,8 +3,9 @@
   python -m servicios.comidas.trabajador servicio      # bucle: mira la base cada pocos segundos
   python -m servicios.comidas.trabajador una ID        # analiza una comida ya (pruebas)
 
-Usa el núcleo del prototipo (nutricion.py: 3 modelos × repeticiones, dos vías, mediana y alertas)
-sin cambiarlo. Solo se comunica con la API por la tabla `comidas` (regla 3 de CLAUDE.md).
+Usa el núcleo del prototipo (nutricion.py: consulta, dos vías, mediana y alertas) sin cambiarlo,
+pero con repeticiones adaptativas (Daniel, 19-11-2026): una consulta por modelo y, solo si las
+estimaciones de hidratos discrepan mucho, otra ronda para ver si cambian. Solo se comunica con la API por la tabla `comidas` (regla 3 de CLAUDE.md).
 
 REGLA 1: lo que escribe aquí son ESTIMACIONES de nutrientes, nunca unidades de insulina. Esos gramos
 no entran en ningún cálculo de dosis hasta que Daniel revisa la comida en la app.
@@ -12,11 +13,13 @@ no entran en ningún cálculo de dosis hasta que Daniel revisa la comida en la a
 Variables de entorno:
   OLLAMA_URL              http://host.docker.internal:11434 en Docker
   COMIDAS_MODELOS         lista separada por comas (por defecto, la de config.py)
-  COMIDAS_REPETICIONES    consultas por modelo (por defecto, la de config.py)
+  COMIDAS_RONDAS_MAX      rondas como máximo (por defecto 2: la segunda solo si hay discrepancias)
+  COMIDAS_CONTEXTO        tokens de contexto por consulta (por defecto 8192)
   RUTA_FOTOS              carpeta de las fotos (volumen local)
   RUTA_ALIMENTOS_USDA     base USDA en SQLite generada con preparar_bd.py (opcional)
 """
 import argparse
+import base64
 import json
 import logging
 import os
@@ -24,6 +27,8 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+import requests
 
 from comun.ajustes import Ajustes
 from comun.bd import conectar
@@ -37,6 +42,10 @@ import nutricion as N
 log = logging.getLogger("comidas")
 INTERVALO_S = 3
 RUTA_FOTOS = Path(os.environ.get("RUTA_FOTOS", "/datos/fotos"))
+RONDAS_MAX = 2
+CONTEXTO = 8192          # tokens: foto de 1600 px + instrucciones caben de sobra. Con los 32 768 por
+                         # defecto, qwen3-vl:32b llena los 32 GB de la GPU y se vuelve lentísimo.
+MANTENER = "30m"         # tiempo que Ollama deja el modelo cargado tras una consulta
 
 
 def configurar() -> None:
@@ -45,10 +54,74 @@ def configurar() -> None:
     C.OLLAMA_URL = (e("OLLAMA_URL") or C.OLLAMA_URL).rstrip("/")
     if e("COMIDAS_MODELOS"):
         C.MODELOS = C.MODELOS_TEXTO = [m.strip() for m in e("COMIDAS_MODELOS").split(",") if m.strip()]
-    if e("COMIDAS_REPETICIONES"):
-        C.REPETICIONES = int(e("COMIDAS_REPETICIONES"))
+    global RONDAS_MAX
+    global CONTEXTO
+    if e("COMIDAS_CONTEXTO"):
+        CONTEXTO = int(e("COMIDAS_CONTEXTO"))
+    if e("COMIDAS_RONDAS_MAX"):
+        RONDAS_MAX = max(1, int(e("COMIDAS_RONDAS_MAX")))
     C.RUTA_BD = e("RUTA_ALIMENTOS_USDA") or str(_AQUI / C.RUTA_BD)
     C.RUTA_PROPIOS = e("RUTA_ALIMENTOS_PROPIOS") or str(_AQUI / C.RUTA_PROPIOS)
+
+
+def consultar_ollama(modelo: str, prompt: str, imagen_b64: str | None = None) -> dict:
+    """Como nutricion.consultar, con contexto acotado, modelo cargado un rato y tiempo en el log."""
+    msg = {"role": "user", "content": prompt}
+    if imagen_b64:
+        msg["images"] = [imagen_b64]
+    t0 = time.monotonic()
+    r = requests.post(f"{C.OLLAMA_URL}/api/chat", timeout=C.TIMEOUT, json={
+        "model": modelo, "messages": [msg], "format": N.ESQUEMA, "stream": False, "keep_alive": MANTENER,
+        "options": {"temperature": C.TEMPERATURA, "num_ctx": CONTEXTO}})
+    r.raise_for_status()
+    d = r.json()
+    log.info("  %s: %.1f s (carga %.1f s, %s tokens)", modelo, time.monotonic() - t0,
+             (d.get("load_duration") or 0) / 1e9, d.get("eval_count"))
+    return json.loads(d["message"]["content"])
+
+
+def discrepan(corridas: list[dict]) -> bool:
+    """Mismo criterio que la alerta del prototipo: hidratos (las dos vías de cada consulta) que se
+    separan más de ALERTA_ABS_G gramos o de ALERTA_REL de la mediana."""
+    hc = [N.hc_bolo(c[via]) for c in corridas for via in ("via_bd", "via_modelo")]
+    if len(hc) < 2:
+        return False
+    med = sorted(hc)[len(hc) // 2] if len(hc) % 2 else sum(sorted(hc)[len(hc) // 2 - 1:len(hc) // 2 + 1]) / 2
+    return max(hc) - min(hc) > max(C.ALERTA_ABS_G, C.ALERTA_REL * med)
+
+
+def analizar_adaptativo(tabla, imagen: bytes | None = None, nota: str = "", texto: str | None = None,
+                        progreso=log.info, consultar=None) -> dict:
+    """Una consulta por modelo; si discrepan, otra ronda (como mucho RONDAS_MAX). La segunda ronda
+    va en orden inverso para empezar por el modelo que sigue cargado en la GPU."""
+    consultar = consultar or consultar_ollama
+    if imagen is not None:
+        b64 = base64.b64encode(imagen).decode()
+        prompt = N.INSTRUCCIONES.format(fuente=N.FUENTE_FOTO.format(nota=f"\nNota del usuario: {nota}" if nota else ""))
+        modelos = list(C.MODELOS)
+    else:
+        b64 = None
+        prompt = N.INSTRUCCIONES.format(fuente=N.FUENTE_TEXTO.format(texto=texto))
+        modelos = list(C.MODELOS_TEXTO)
+    corridas, errores, rondas = [], [], 0
+    while rondas < RONDAS_MAX and (rondas == 0 or discrepan(corridas) or not corridas):
+        orden = modelos if rondas % 2 == 0 else modelos[::-1]
+        rondas += 1
+        for m in orden:
+            progreso(f"  {m} (ronda {rondas})…")
+            try:
+                r = N.procesar_respuesta(consultar(m, prompt, b64), tabla)
+                r["modelo_id"] = m
+                corridas.append(r)
+            except Exception as e:
+                errores.append(f"{m}: {e}")
+    if not corridas:
+        raise RuntimeError("Ningún modelo respondió:\n" + "\n".join(errores))
+    r = N.consolidar(corridas, errores, origen="foto" if imagen is not None else "texto")
+    r["rondas"] = rondas
+    if rondas > 1:
+        r["alertas"].insert(0, f"Los modelos discrepaban: se repitió el análisis ({rondas} rondas).")
+    return r
 
 
 def resumen(r: dict) -> dict:
@@ -64,7 +137,7 @@ def resumen(r: dict) -> dict:
             "rango_hidratos_max_g": round(max(hi, r["hc_bolo"]), 1), "items": items,
             "estimaciones": {"estimaciones": r["estimaciones"], "errores": r["errores"],
                              "modelos_items": r["modelos_items"], "modelos": C.MODELOS,
-                             "repeticiones": C.REPETICIONES},
+                             "rondas": r.get("rondas")},
             "alertas": r["alertas"]}
 
 
@@ -79,7 +152,7 @@ def tomar(con) -> dict | None:
 
 
 def analizar(con, comida: dict, tabla, analizar_plato=None) -> dict:
-    analizar_plato = analizar_plato or N.analizar_plato
+    analizar_plato = analizar_plato or analizar_adaptativo
     inicio = time.monotonic()
     try:
         if comida["origen"] == "foto":
@@ -125,7 +198,7 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     configurar()
     tabla = N.TablaAlimentos(C.RUTA_BD, C.RUTA_PROPIOS)
-    log.info("Modelos %s × %s en %s; base USDA %s", C.MODELOS, C.REPETICIONES, C.OLLAMA_URL,
+    log.info("Modelos %s, hasta %s rondas, en %s; base USDA %s", C.MODELOS, RONDAS_MAX, C.OLLAMA_URL,
              "sí" if tabla.usda else "no (solo alimentos propios y estimación del modelo)")
     aj = Ajustes.desde_entorno()
     with conectar(aj.database_url, autocommit=True) as con:
