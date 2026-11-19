@@ -60,7 +60,8 @@ class CambioComida(BaseModel):
 
 class NuevaTresiba(BaseModel):
     unidades: float = Field(gt=0, lt=1000)
-    hora_local: time
+    hora_local: time                     # inicio de la franja
+    hora_fin_local: time | None = None   # fin de la franja (si falta, hora fija)
     vigente_desde: datetime | None = None
     notas: str | None = Field(default=None, max_length=500)
 
@@ -192,14 +193,17 @@ def ver_tresiba(con=SESION):
     ahora = _ahora()
     prox = T.programadas_bd(con, ahora - timedelta(days=1), ahora + timedelta(days=2))
     return {"vigente": T.vigente(con, ahora), "historial": T.historial(con),
-            "programadas": [{"ts": p["ts"].isoformat(), "unidades": p["unidades"]} for p in prox]}
+            "programadas": [{"ts": p["ts"].isoformat(), "ts_fin": p["ts_fin"].isoformat(),
+                             "ts_estimada": p["ts_estimada"].isoformat(), "unidades": p["unidades"]}
+                            for p in prox]}
 
 
 @router.post("/tresiba")
 def cambiar_tresiba(t: NuevaTresiba, con=SESION):
     desde = _con_zona(t.vigente_desde) if t.vigente_desde else _ahora()
     try:
-        return {"vigente": T.guardar(con, t.unidades, t.hora_local, desde, t.notas)}
+        return {"vigente": T.guardar(con, t.unidades, t.hora_local, desde, t.notas,
+                                       hora_fin_local=t.hora_fin_local)}
     except psycopg.errors.UniqueViolation:
         raise HTTPException(409, "Ya hay un cambio con esa misma fecha y hora")
 

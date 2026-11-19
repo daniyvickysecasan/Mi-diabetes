@@ -328,15 +328,20 @@ function enviarHidratos(ev) {
 }
 
 // ------------------------------------------------------------------ Tresiba
+const franja = (c) => (!c.hora_fin_local || c.hora_fin_local === c.hora_local
+  ? `a las ${c.hora_local}` : `entre las ${c.hora_local} y las ${c.hora_fin_local}`);
 async function cargarTresiba() {
   if (!$("tr-desde").dataset.tocado) $("tr-desde").value = valorLocal();
   try {
     const t = await pedir("/api/tresiba");
     const v = t.vigente;
-    $("tr-vigente").textContent = v ? `${num(v.unidades)} U cada día a las ${v.hora_local}` : "Sin configurar todavía.";
-    if (v && !$("tr-u").value) { $("tr-u").value = String(v.unidades).replace(".", ","); $("tr-hora").value = v.hora_local; }
+    $("tr-vigente").textContent = v ? `${num(v.unidades)} U cada día ${franja(v)}` : "Sin configurar todavía.";
+    if (v && !$("tr-u").value) {
+      $("tr-u").value = String(v.unidades).replace(".", ",");
+      $("tr-hora").value = v.hora_local; $("tr-hora-fin").value = v.hora_fin_local;
+    }
     $("tr-historial").replaceChildren(...(t.historial.length ? t.historial.map((h) =>
-      li(`Desde ${fechaHora(h.vigente_desde)}: ${num(h.unidades)} U a las ${h.hora_local}${h.notas ? ` · ${h.notas}` : ""}`))
+      li(`Desde ${fechaHora(h.vigente_desde)}: ${num(h.unidades)} U ${franja(h)}${h.notas ? ` · ${h.notas}` : ""}`))
       : [li("Sin cambios registrados", "suave")]));
   } catch (e) {
     if (e.estado === 401) return mostrar("entrada");
@@ -347,11 +352,12 @@ async function cargarTresiba() {
 async function enviarTresiba(ev) {
   ev.preventDefault();
   const u = leerNumero($("tr-u").value);
-  if (!(u > 0) || !$("tr-hora").value) return aviso("Faltan las unidades o la hora", true);
+  if (!(u > 0) || !$("tr-hora").value || !$("tr-hora-fin").value) return aviso("Faltan las unidades o la franja", true);
   try {
-    await pedir("/api/tresiba", { unidades: u, hora_local: $("tr-hora").value, vigente_desde: desdeLocal($("tr-desde").value),
+    await pedir("/api/tresiba", { unidades: u, hora_local: $("tr-hora").value, hora_fin_local: $("tr-hora-fin").value,
+      vigente_desde: desdeLocal($("tr-desde").value),
       notas: $("tr-notas").value.trim() || null });
-    aviso(`Tresiba: ${num(u)} U a las ${$("tr-hora").value}`);
+    aviso(`Tresiba: ${num(u)} U ${franja({ hora_local: $("tr-hora").value, hora_fin_local: $("tr-hora-fin").value })}`);
     $("tr-notas").value = ""; delete $("tr-desde").dataset.tocado;
     cargarTresiba();
   } catch (e) {

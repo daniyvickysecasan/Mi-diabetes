@@ -133,14 +133,16 @@
       <section class="tarjeta">
         <h2>Tresiba</h2>
         <p id="tr-vigente" class="iob-texto"></p>
-        <p class="suave pequeno">Se da por puesta cada día a esa hora. Si cambias la dosis o la hora, guárdalo aquí: el historial no se borra.</p>
+        <p class="suave pequeno">Se da por puesta cada día dentro de esa franja. Si cambias la dosis o la franja, guárdalo aquí: el historial no se borra.</p>
       </section>
       <form id="f-tresiba" class="tarjeta" autocomplete="off">
-        <h2>Cambiar dosis u hora</h2>
+        <h2>Cambiar dosis o franja horaria</h2>
         <label for="tr-u">Unidades</label>
         <input id="tr-u" type="text" inputmode="decimal" required>
-        <label for="tr-hora">Hora habitual</label>
-        <input id="tr-hora" type="time" required>
+        <div class="franja">
+          <div><label for="tr-hora">Desde las</label><input id="tr-hora" type="time" required></div>
+          <div><label for="tr-hora-fin">Hasta las</label><input id="tr-hora-fin" type="time" required></div>
+        </div>
         <label for="tr-desde">Desde</label>
         <input id="tr-desde" type="datetime-local" required>
         <label for="tr-notas">Notas (opcional)</label>
