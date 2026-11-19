@@ -102,7 +102,12 @@ def vuelta(con, cliente, escritor=None, sincronizar: bool | None = None, dias: i
         sincronizar = est.hay_solicitudes(con)
     try:
         if estado == "sms_pedido":
-            destino = cliente.pedir_sms()
+            try:
+                destino = cliente.pedir_sms()
+            except ErrorLibreView as x:      # se deja el botón para reintentar, con el motivo
+                est.poner(con, "necesita_codigo", error=str(x)[:300])
+                log.error("LibreView no mandó el SMS: %s", x)
+                return {"accion": "sms_fallido", "error": str(x)}
             est.poner(con, "esperando_codigo", destino_sms=destino, error=None)
             log.info("SMS de LibreView pedido")
             return {"accion": "sms_enviado"}

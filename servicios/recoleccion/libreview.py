@@ -128,6 +128,19 @@ class ClienteLibreView:
                 texto = texto.replace(secreto, "***")
         return texto
 
+    def _motivo(self, r: httpx.Response) -> str:
+        """El motivo que da LibreView (error.message o similar), sin datos personales."""
+        try:
+            d = r.json()
+        except Exception:
+            return ""
+        if not isinstance(d, dict):
+            return ""
+        e = d.get("error") if isinstance(d.get("error"), dict) else {}
+        partes = [str(x) for x in (e.get("message"), e.get("code"), d.get("message"), d.get("status")) if x not in (None, "")]
+        texto = self._limpiar(" ".join(partes))[:120]
+        return f" ({texto})" if texto else ""
+
     def _peticion(self, metodo: str, url: str, cuerpo: dict | None = None, token: str | None = None,
                   json_esperado: bool = True):
         if not url.startswith("http"):
@@ -137,10 +150,8 @@ class ClienteLibreView:
         except Exception as e:
             raise ErrorLibreView(self._limpiar(f"{url.split('?')[0]}: {type(e).__name__}: {e}")) from None
         ruta = url.split("?")[0].split("libreview.io")[-1]
-        if r.status_code == 401:
-            raise ErrorLibreView(f"{ruta}: HTTP 401")
         if r.status_code >= 400:
-            raise ErrorLibreView(f"{ruta}: HTTP {r.status_code}")
+            raise ErrorLibreView(f"{ruta}: HTTP {r.status_code}{self._motivo(r)}")
         if not json_esperado:
             return r.text
         try:
@@ -188,6 +199,11 @@ class ClienteLibreView:
             self.sesion.token_parcial = ticket.get("token")
             self.sesion.id_usuario = (d.get("user") or {}).get("id") or self.sesion.id_usuario
             self.sesion.guardar(self.ruta)
+            # Solo la forma (tipos y claves), nunca valores: sirve para ver qué pide LibreView.
+            props = paso.get("props") if isinstance(paso, dict) else None
+            log.warning("LibreView pide un paso al entrar: status=%s tipo=%s componente=%s props=%s datos=%s",
+                        estado, tipo or "-", (paso.get("componentName") if isinstance(paso, dict) else "-"),
+                        sorted(props) if isinstance(props, dict) else type(props).__name__, sorted(d))
             if tipo.lower() in PASOS_EN_LA_WEB:
                 raise ErrorLibreView(f"LibreView pide un paso en la web ({tipo}): entra una vez en libreview.com")
             raise NecesitaCodigo("LibreView pide el código del SMS")

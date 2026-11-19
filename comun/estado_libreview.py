@@ -103,7 +103,8 @@ def para_la_app(con, ahora: datetime | None = None) -> dict:
         r["leyendo"] = abierta >= ahora - SIN_RESPUESTA
     if estado == "necesita_codigo":
         r |= {"accion": "pedir_sms",
-              "mensaje": "LibreView pide el código del SMS para seguir leyendo la pluma."}
+              "mensaje": "LibreView pide el código del SMS para seguir leyendo la pluma."
+                         + (f" (último intento: {e['error']})" if e["error"] else "")}
     elif estado == "sms_pedido":
         r |= {"accion": "esperar", "mensaje": "Pidiendo el SMS a LibreView…"}
     elif estado == "esperando_codigo":
