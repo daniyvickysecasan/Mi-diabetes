@@ -210,3 +210,20 @@ def test_bd_aleatorio_ninguna_inyeccion_dos_veces(con):
     assert por["pluma_libreview"]["n"] == 40 and float(por["pluma_libreview"]["u"]) == sum(u for _, u in reales)
     assert "csv_libreview" not in por and "app" not in por
     assert con.execute("SELECT count(*) AS n FROM dosis WHERE estado_conciliacion='pendiente'").fetchone()["n"] == 0
+
+
+def test_descartada_en_el_csv_tambien_se_descarta_si_llega_por_la_api():
+    """La demostración de 20,5 U descartada en el CSV no puede volver a contar al llegar por la API."""
+    c = fila("csv_libreview", 0, 20.5, revisada=True, estado="descartada")
+    api = fila("pluma_libreview", 1, 20.5)
+    r = calcular([c, api])
+    assert r[api["id"]].estado == "descartada" and r[api["id"]].par == c["id"]
+
+
+def test_bd_descartada_por_una_via_no_cuenta_por_la_otra(con):
+    c = _ins(con, 0, 20.5, "csv_libreview")
+    conciliar(con, m(1))
+    revisar(con, c, "descartar", m(2))
+    _ins(con, 0, 20.5, "pluma_libreview")
+    conciliar(con, m(3))
+    assert _iob_ids(con, 30) == []
