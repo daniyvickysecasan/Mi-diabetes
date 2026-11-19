@@ -52,7 +52,8 @@ def test_guarda_dosis_como_fiasp_de_la_pluma(con, ahora):
     assert [f["unidades"] for f in filas] == [Decimal("4.50"), Decimal("2.00")]
     assert {f["origen"] for f in filas} == {"pluma_libreview"}
     assert {f["insulina"] for f in filas} == {"fiasp"}
-    assert {f["estado_conciliacion"] for f in filas} == {"pendiente"}
+    # El estado lo decide la conciliación (sin dosis en la app: solo_pluma), nunca este módulo.
+    assert {f["estado_conciliacion"] for f in filas} <= {"pendiente", "solo_pluma"}
     assert all(f["dosis_par_id"] is None and f["comida_id"] is None for f in filas)
 
 
@@ -161,14 +162,12 @@ def test_fallo_de_libreview_queda_registrado(con, ahora):
 
 def test_retraso_y_comparacion_con_la_app(con, ahora):
     # Dosis inyectada hace 60 min, vista ahora: retraso 60. En la app se confirmó a los 2 min.
+    # La conciliación real (comun.conciliacion) es la que las empareja.
     t = ahora - timedelta(minutes=60)
-    pluma.ciclo(con, FuenteFalsa([_d(t, 4)]), 48, ahora=ahora)
-    pid = con.execute("SELECT id FROM dosis").fetchone()["id"]
-    app_id = con.execute(
-        """INSERT INTO dosis (ts, unidades, insulina, origen, creado_en, dosis_par_id)
-           VALUES (%s, 4, 'fiasp', 'app', %s, %s) RETURNING id""", (t, t + timedelta(minutes=2), pid)
-    ).fetchone()["id"]
-    assert app_id
+    con.execute("""INSERT INTO dosis (ts, unidades, insulina, origen, creado_en)
+                   VALUES (%s, 4, 'fiasp', 'app', %s)""", (t, t + timedelta(minutes=2)))
+    r = pluma.ciclo(con, FuenteFalsa([_d(t, 4)]), 48, ahora=ahora)
+    assert r["conciliacion"] is not None
     r = pluma.informe_retraso(con, 7, ahora=ahora)
     assert r["n"] == 1 and r["mediana_min"] == 60.0 and r["con_app"] == 1
     assert r["mediana_app_min"] == 2.0 and r["app_antes"] == 1
@@ -232,3 +231,12 @@ def test_sin_endpoint_confirmado_no_inventa_dosis():
     c = ClienteLibreView("a@b.test", "x", cliente=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))))
     with pytest.raises(ErrorLibreView, match="sin confirmar"):
         c.dosis(pluma.ahora_utc() - timedelta(days=1), pluma.ahora_utc())
+
+
+def test_serie_y_cebado_descartado_por_la_conciliacion(con, ahora):
+    f = FuenteFalsa([_d(ahora - timedelta(minutes=30), 2, cebado=True), _d(ahora - timedelta(minutes=29), 6)])
+    pluma.ciclo(con, f, 48, ahora=ahora)
+    filas = {r["unidades"]: r for r in con.execute("SELECT unidades, numero_serie, estado_conciliacion FROM dosis")}
+    assert {r["numero_serie"] for r in filas.values()} == {"SERIE-PRUEBA"}
+    assert filas[Decimal("2.00")]["estado_conciliacion"] == "descartada"
+    assert filas[Decimal("6.00")]["estado_conciliacion"] != "descartada"

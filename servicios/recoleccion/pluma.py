@@ -79,10 +79,10 @@ def guardar_dosis(con, dosis: list[DosisPluma], modo: str, ahora: datetime | Non
             log.warning("Dosis con hora futura (%s): revisa el reloj de la pluma o del iPhone", d.ts)
         notas = "cebado" if d.cebado else None
         fila = con.execute(
-            """INSERT INTO dosis (ts, unidades, insulina, origen, id_externo, notas)
-               VALUES (%s, %s, 'fiasp', %s, %s, %s)
+            """INSERT INTO dosis (ts, unidades, insulina, origen, id_externo, notas, numero_serie)
+               VALUES (%s, %s, 'fiasp', %s, %s, %s, %s)
                ON CONFLICT (origen, id_externo) DO NOTHING RETURNING id""",
-            (d.ts.astimezone(timezone.utc), u, ORIGEN_DOSIS, d.id_externo, notas)).fetchone()
+            (d.ts.astimezone(timezone.utc), u, ORIGEN_DOSIS, d.id_externo, notas, d.serie_pluma)).fetchone()
         if fila is None:
             res["ya_estaban"] += 1
             continue
