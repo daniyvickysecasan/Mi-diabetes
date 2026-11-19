@@ -32,7 +32,7 @@ ZONA = ZoneInfo("Europe/Madrid")
 
 @dataclass(frozen=True)
 class Limites:
-    """Umbrales de seguridad. PROPUESTOS el 19-11-2026, pendientes de aprobación de Daniel."""
+    """Umbrales de seguridad. Aceptados por Daniel en el hilo el 19-11-2026 (preguntas 2–6)."""
     paso_pluma_u: float = 0.5               # NovoPen Echo Plus
     glucosa_max_antiguedad_min: float = 15
     freno_glucosa_baja: int = 80            # por debajo: nada
