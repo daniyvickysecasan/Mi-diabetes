@@ -94,6 +94,27 @@ def discrepan(corridas: list[dict]) -> bool:
     return max(hc) - min(hc) > max(C.ALERTA_ABS_G, C.ALERTA_REL * med)
 
 
+def fuente_foto(nota: str) -> str:
+    """Con descripción, manda la de Daniel para saber QUÉ hay; la foto, para CUÁNTO (19-11-2026)."""
+    nota = (nota or "").strip()
+    if not nota:
+        return N.FUENTE_FOTO.format(nota="")
+    return ("Analiza la foto del plato. Quien va a comer dice que es: «" + nota.replace("«", "").replace("»", "") + "».\n"
+            "Fíate de esa descripción para saber qué alimentos hay y llámalos así (aunque en la foto parezcan "
+            "otra cosa); usa la foto sobre todo para estimar las cantidades. Si la descripción da cantidades, úsalas.")
+
+
+def limpiar_alertas(alertas: list[str], tabla) -> list[str]:
+    """Sin base USDA, el aviso de "sin coincidencia" saldría en todos los platos: se cambia por uno
+    solo y claro."""
+    if getattr(tabla, "usda", None):
+        return alertas
+    otras = [a for a in alertas if not a.startswith("Sin coincidencia en la base")]
+    if len(otras) != len(alertas):
+        otras.append("Valores de los modelos: aún no hay base de alimentos USDA para contrastarlos.")
+    return otras
+
+
 def analizar_adaptativo(tabla, imagen: bytes | None = None, nota: str = "", texto: str | None = None,
                         progreso=log.info, consultar=None) -> dict:
     """Una consulta por modelo; si discrepan, otra ronda (como mucho RONDAS_MAX). La segunda ronda
@@ -101,7 +122,7 @@ def analizar_adaptativo(tabla, imagen: bytes | None = None, nota: str = "", text
     consultar = consultar or consultar_ollama
     if imagen is not None:
         b64 = base64.b64encode(imagen).decode()
-        prompt = N.INSTRUCCIONES.format(fuente=N.FUENTE_FOTO.format(nota=f"\nNota del usuario: {nota}" if nota else ""))
+        prompt = N.INSTRUCCIONES.format(fuente=fuente_foto(nota))
         modelos = list(C.MODELOS)
     else:
         b64 = None
@@ -122,6 +143,7 @@ def analizar_adaptativo(tabla, imagen: bytes | None = None, nota: str = "", text
     if not corridas:
         raise RuntimeError("Ningún modelo respondió:\n" + "\n".join(errores))
     r = N.consolidar(corridas, errores, origen="foto" if imagen is not None else "texto")
+    r["alertas"] = limpiar_alertas(r["alertas"], tabla)
     r["rondas"] = rondas
     if rondas > 1:
         r["alertas"].insert(0, f"Los modelos discrepaban: se repitió el análisis ({rondas} rondas).")

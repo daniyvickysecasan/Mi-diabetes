@@ -279,3 +279,31 @@ def test_la_consulta_acota_el_contexto(monkeypatch):
     monkeypatch.setattr(T.requests, "post", post)
     assert T.consultar_ollama("qwen3-vl:32b", "hola", "b64") == {"items": []}
     assert enviado["options"]["num_ctx"] == T.CONTEXTO == 8192 and enviado["keep_alive"]
+
+
+# ------------------------------------------------------------------ la descripción guía a la foto
+def test_la_descripcion_manda_en_el_prompt_de_la_foto(monkeypatch):
+    monkeypatch.setattr(T.C, "MODELOS", ["a"])
+    prompts = []
+
+    def consultar(modelo, prompt, b64):
+        prompts.append(prompt)
+        return respuesta(5)
+    T.analizar_adaptativo(TablaVacia(), imagen=JPEG, nota="steak tartar", consultar=consultar)
+    assert "«steak tartar»" in prompts[0] and "Fíate de esa descripción" in prompts[0]
+    T.analizar_adaptativo(TablaVacia(), imagen=JPEG, nota="", consultar=consultar)
+    assert "Fíate" not in prompts[1]
+
+
+def test_sin_base_usda_un_solo_aviso_claro():
+    a = ["Valor atípico: x", "Sin coincidencia en la base (se usa el valor del modelo): steak tartar, tartar de carne"]
+    assert T.limpiar_alertas(a, TablaVacia()) == ["Valor atípico: x", "Valores de los modelos: aún no hay base de alimentos USDA para contrastarlos."]
+
+    class ConUSDA:
+        usda = [1]
+    assert T.limpiar_alertas(a, ConUSDA()) == a
+
+
+def test_la_foto_guarda_la_descripcion_larga(cli, con):
+    r = _foto(cli, id_cliente="foto-cliente-9", nota="steak tartar " * 50)
+    assert r.status_code == 200 and con.execute("SELECT descripcion FROM comidas").fetchone()["descripcion"].startswith("steak")

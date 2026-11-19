@@ -901,7 +901,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!f) return;
     try {
       const imagen_b64 = await reducirFoto(f);
-      analizarComida("/api/comidas/foto", { id_cliente: nuevoId(), imagen_b64 });
+      const nota = $("s-texto").value.trim().slice(0, 1000);   // la descripción guía a los modelos
+      analizarComida("/api/comidas/foto", { id_cliente: nuevoId(), imagen_b64, ...(nota ? { nota } : {}) });
     } catch (e) { aviso(e.message, true); }
   });
   $("s-texto-btn").addEventListener("click", () => {
