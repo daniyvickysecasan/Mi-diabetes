@@ -24,6 +24,7 @@ h1 { margin: 0 0 8px; } h2 { font-size: 1rem; margin: 0 0 8px; }
 .flecha { font-size: 2.2rem; }
 .aviso { margin: 12px auto 0; padding: 8px 12px; border-radius: 10px; background: rgba(239, 68, 68, .15);
          color: var(--bajo); max-width: 420px; }
+.aviso-pluma { background: rgba(245, 158, 11, .15); color: var(--alto); }
 svg { width: 100%; height: auto; display: block; }
 .tir { margin: 10px 0; }
 .tir .barra { display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: var(--fondo); }

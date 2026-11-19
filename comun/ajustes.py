@@ -28,6 +28,10 @@ class Ajustes:
     rango_alto: int = 180
     zona_horaria: str = "Europe/Madrid"
 
+    # Aviso "Lee la pluma" (comun/aviso_pluma.py)
+    aviso_pluma_horas: float = 12.0       # sin dosis de la pluma durante más de esto = avisar
+    aviso_pluma_margen_min: int = 45      # dosis apuntada en la app sin llegar de la pluma tras esto = avisar
+
     # Passkey / sesión
     rp_id: str = "localhost"
     rp_nombre: str = "Mi Diabetes"
@@ -50,6 +54,8 @@ class Ajustes:
             rango_bajo=int(e("RANGO_BAJO") or 70),
             rango_alto=int(e("RANGO_ALTO") or 180),
             zona_horaria=e("ZONA_HORARIA") or "Europe/Madrid",
+            aviso_pluma_horas=float(e("AVISO_PLUMA_HORAS") or 12),
+            aviso_pluma_margen_min=int(e("AVISO_PLUMA_MARGEN_MIN") or 45),
             rp_id=e("RP_ID") or "localhost",
             rp_nombre=e("RP_NOMBRE") or "Mi Diabetes",
             origenes=origenes,

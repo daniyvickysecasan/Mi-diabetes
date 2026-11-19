@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from api.deps import requiere_sesion
+from comun import aviso_pluma as AP
 from comun import conciliacion as C
 from comun import metricas as M
 from comun import tresiba as T
@@ -221,7 +222,8 @@ def metricas(dias: int = Query(14, ge=1, le=90), con=SESION):
     return M.metricas(con, hasta - timedelta(days=dias), hasta)
 
 
-def resumen_panel(con, ahora: datetime) -> dict:
+def resumen_panel(con, ahora: datetime, aviso_pluma_horas: float = AP.UMBRAL_HORAS,
+                  aviso_pluma_margen_min: int = AP.MARGEN_MIN) -> dict:
     """Lo que añade la fase 2 al panel."""
     pend = con.execute(   # una pareja cuenta como un solo caso
         """SELECT count(DISTINCT LEAST(id, COALESCE(dosis_par_id, id))) AS n FROM dosis WHERE requiere_revision"""
@@ -232,6 +234,7 @@ def resumen_panel(con, ahora: datetime) -> dict:
         "insulina_activa": insulina_activa_bd(con, ahora),
         "metricas_14d": M.metricas(con, ahora - timedelta(days=14), ahora),
         "por_revisar": pend,
+        "aviso_pluma": AP.evaluar_bd(con, ahora, aviso_pluma_horas, aviso_pluma_margen_min),
         "tresiba": T.vigente(con, ahora),
         "ultimas_dosis": [_dosis_json(f) for f in ultimas],
         "curva": {"pico_min": FIASP.pico_min, "duracion_min": FIASP.duracion_min},

@@ -107,9 +107,22 @@ def test_tresiba(cli):
 
 def test_panel_trae_lo_de_la_fase_2(cli):
     p = cli.get("/api/panel").json()
-    for k in ("insulina_activa", "metricas_14d", "por_revisar", "tresiba", "ultimas_dosis"):
+    for k in ("insulina_activa", "metricas_14d", "por_revisar", "tresiba", "ultimas_dosis", "aviso_pluma"):
         assert k in p
     assert p["insulina_activa"]["unidades"] == 0
+    assert p["aviso_pluma"]["motivo"] == "sin_lecturas"     # aún no ha llegado nada de la pluma
+
+
+def test_panel_avisa_de_leer_la_pluma_y_respeta_el_umbral(con, ajustes):
+    from dataclasses import replace
+    con.execute("""INSERT INTO dosis (ts, unidades, insulina, origen, id_externo)
+                   VALUES (now() - interval '5 hours', 4, 'fiasp', 'pluma_libreview', 'p1')""")
+    c = TestClient(crear_app(replace(ajustes, aviso_pluma_horas=4)), base_url=ORIGEN)
+    assert _alta(c, Autenticador(ajustes.rp_id, ORIGEN)).status_code == 200
+    a = c.get("/api/panel").json()["aviso_pluma"]
+    assert a["motivo"] == "sin_lecturas" and "5 h" in a["texto"]
+    c2 = TestClient(crear_app(ajustes), base_url=ORIGEN, cookies=c.cookies)   # misma sesión, umbral de 12 h
+    assert c2.get("/api/panel").json()["aviso_pluma"] is None
 
 
 def test_tresiba_sin_fin_de_franja_se_rechaza(cli):
