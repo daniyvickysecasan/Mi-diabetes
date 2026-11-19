@@ -74,3 +74,24 @@ def test_cli_simular_no_escribe(tmp_path, capsys):
     assert _main([str(f), "--simular"]) == 0
     salida = capsys.readouterr().out
     assert "dosis de rápida 1" in salida and "no se ha escrito nada" in salida
+
+
+def test_cabecera_real_de_libreview():
+    """Formato real: metadatos en la 1.ª línea, coma decimal entre comillas, dispositivo vacío en la pluma."""
+    import csv, io
+    from herramientas.sinteticos import CABECERA_LIBREVIEW_ES_REAL as H
+    buf = io.StringIO()
+    buf.write("Datos de glucosa,Generado el,19-11-2026 13:25 UTC,Generado por,Persona sintética\r\n")
+    w = csv.writer(buf, lineterminator="\r\n")
+    w.writerow(H)
+    vacia = [""] * len(H)
+    g = list(vacia); g[0] = "FreeStyle LibreLink"; g[1] = "S1"; g[2] = "24-07-2022 00:01"; g[3] = "0"; g[4] = "120"
+    p = list(vacia); p[1] = "PLUMA-1"; p[2] = "18-11-2026 14:44"; p[3] = "4"; p[7] = "6,0"
+    l = list(vacia); l[2] = "18-11-2026 08:00"; l[3] = "4"; l[12] = "34,0"
+    for f in (g, p, l):
+        w.writerow(f)
+    lec = leer(buf.getvalue().encode("utf-8-sig"))
+    assert lec.mapeo["rapida"] == "Insulina de acción rápida (unidades)"
+    assert lec.mapeo["lenta"] == "Insulina de acción larga (unidades)"
+    assert [(d["ts"], d["unidades"], d["numero_serie"]) for d in lec.dosis] == [(U(2026, 11, 18, 13, 44), 6.0, "PLUMA-1")]
+    assert lec.lentas == 1
