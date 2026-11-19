@@ -128,6 +128,19 @@ class ClienteLibreView:
                 texto = texto.replace(secreto, "***")
         return texto
 
+    def _motivo(self, r: httpx.Response) -> str:
+        """El motivo que da LibreView (error.message o similar), sin datos personales."""
+        try:
+            d = r.json()
+        except Exception:
+            return ""
+        if not isinstance(d, dict):
+            return ""
+        e = d.get("error") if isinstance(d.get("error"), dict) else {}
+        partes = [str(x) for x in (e.get("message"), e.get("code"), d.get("message"), d.get("status")) if x not in (None, "")]
+        texto = self._limpiar(" ".join(partes))[:120]
+        return f" ({texto})" if texto else ""
+
     def _peticion(self, metodo: str, url: str, cuerpo: dict | None = None, token: str | None = None,
                   json_esperado: bool = True):
         if not url.startswith("http"):
@@ -137,10 +150,8 @@ class ClienteLibreView:
         except Exception as e:
             raise ErrorLibreView(self._limpiar(f"{url.split('?')[0]}: {type(e).__name__}: {e}")) from None
         ruta = url.split("?")[0].split("libreview.io")[-1]
-        if r.status_code == 401:
-            raise ErrorLibreView(f"{ruta}: HTTP 401")
         if r.status_code >= 400:
-            raise ErrorLibreView(f"{ruta}: HTTP {r.status_code}")
+            raise ErrorLibreView(f"{ruta}: HTTP {r.status_code}{self._motivo(r)}")
         if not json_esperado:
             return r.text
         try:

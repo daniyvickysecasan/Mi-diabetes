@@ -60,6 +60,7 @@ class LibreViewSimulado:
         self.logins = 0
         self.informes = 0
         self.fallar_informe = False
+        self.fallar_sms = False
         self.peticiones: list[str] = []
         self._n = 0
         self._sondeos = 0
@@ -120,6 +121,9 @@ class LibreViewSimulado:
         if ruta == "/auth/continue/2fa/sendcode":
             if bearer not in self.parciales:
                 return httpx.Response(401)
+            if self.fallar_sms:
+                return httpx.Response(400, json={"status": 4, "error": {"message": "RegionMismatch"},
+                                                 "email": self.email})
             self.sms_enviados += 1
             return httpx.Response(200, json={"status": 0, "data": {"primaryValue": "+34600000123"}})
         if ruta == "/auth/continue/2fa/result":

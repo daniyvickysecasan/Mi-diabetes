@@ -325,3 +325,18 @@ def test_api_actualizar(cli, con):
     E.cerrar_solicitudes(con, "ok")
     assert cli.get(f"/api/libreview/actualizar/{r['solicitud']}").json()["resultado"] == "ok"
     assert cli.get("/api/libreview/actualizar/999").status_code == 404
+
+
+def test_sms_rechazado_deja_reintentar_y_dice_el_motivo(con, lv, ruta, ahora):
+    c = _cliente(lv, ruta)
+    lv.fallar_sms = True
+    _leer(con, c, ahora=ahora); E.pedir_sms(con)
+    assert vuelta(con, c, ahora=ahora)["accion"] == "sms_fallido"
+    e = E.leer(con)
+    assert e["estado"] == "necesita_codigo" and "HTTP 400" in e["error"] and "RegionMismatch" in e["error"]
+    assert "yo@ejemplo.test" not in e["error"]
+    app = E.para_la_app(con)
+    assert app["accion"] == "pedir_sms" and "RegionMismatch" in app["mensaje"]
+    lv.fallar_sms = False                               # se puede volver a pedir
+    E.pedir_sms(con)
+    assert vuelta(con, c, ahora=ahora)["accion"] == "sms_enviado"
