@@ -72,8 +72,24 @@ services:
     volumes:
       - sesion-libreview:/datos/libreview
 
+  # Comidas por foto o texto: analiza con Ollama (nativo en Windows, con la GPU) lo que deja la API.
+  comidas:
+    <<: *app
+    command: ["python", "-m", "servicios.comidas.trabajador", "servicio"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      RUTA_ALIMENTOS_USDA: /datos/alimentos/alimentos.sqlite
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - fotos-comidas:/datos/fotos:ro
+      - alimentos:/datos/alimentos:ro
+
   api:
     <<: *app
+    volumes:
+      - fotos-comidas:/datos/fotos
     ports:
       - "127.0.0.1:${PUERTO_API_LOCAL:-8000}:8000"
     healthcheck:
@@ -107,3 +123,5 @@ services:
 volumes:
   datos_bd:
   sesion-libreview:
+  fotos-comidas:     # fotos de las comidas: datos de salud, solo en el PC (aún NO entran en la copia restic)
+  alimentos:         # base USDA en SQLite (servicios/comidas/preparar_bd.py), opcional

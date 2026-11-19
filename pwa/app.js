@@ -551,6 +551,9 @@ function calcularDosis(ev) {
   ev.preventDefault();
   let cuerpo;
   try { cuerpo = peticionSugerencia(); } catch (e) { return aviso(e.message, true); }
+  if (comidaActual && cuerpo.tipo === "comida") {     // corrigiendo la estimación de la foto
+    return confirmarComida({ hidratos_g: cuerpo.hidratos_g, grasa_g: cuerpo.grasa_g ?? 0, proteina_g: cuerpo.proteina_g ?? 0 });
+  }
   conPluma("/api/sugerencias", cuerpo);
 }
 
@@ -660,6 +663,98 @@ async function avisoSegunda() {
   } catch { a.classList.add("oculto"); }
 }
 
+// ------------------------------------------------------------------ comida por foto o texto (fase 3)
+// Los modelos de tu PC estiman los nutrientes; esos gramos solo cuentan cuando pulsas "Correcto"
+// (o corriges algo). La dosis sale después del cálculo fijo, nunca del modelo.
+let comidaActual = null;
+
+function reducirFoto(archivo, lado = 1600) {
+  return new Promise((resolver, rechazar) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, lado / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolver(c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => rechazar(new Error("No se puede leer la foto"));
+    img.src = URL.createObjectURL(archivo);
+  });
+}
+
+async function esperarAnalisis(c) {
+  const est = $("s-foto-estado"), t0 = Date.now();
+  while (c.estado === "pendiente" || c.estado === "analizando") {
+    const s = Math.round((Date.now() - t0) / 1000);
+    est.textContent = `Analizando con los modelos de tu PC… ${s} s (suele tardar 1–2 min)`;
+    if (Date.now() - t0 > 6 * 60e3) throw new Error("El análisis no termina: ¿está encendido el PC con Ollama?");
+    await espera(3000);
+    c = await pedir(`/api/comidas/${c.id}`);
+  }
+  return c;
+}
+
+async function analizarComida(ruta, cuerpo) {
+  if (ocupado) return;
+  ocupado = true; $("s-foto-btn").disabled = $("s-texto-btn").disabled = true;
+  $("s-estimacion").classList.add("oculto"); comidaActual = null;
+  try {
+    $("s-foto-estado").textContent = "Enviando…";
+    const c = await esperarAnalisis(await pedir(ruta, cuerpo));
+    if (c.estado === "error") throw new Error(`No se ha podido analizar: ${c.error || "error"}. Escribe los hidratos abajo.`);
+    $("s-foto-estado").textContent = c.segundos ? `Analizada en ${num(c.segundos, 0)} s.` : "";
+    pintarEstimacion(c);
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    $("s-foto-estado").textContent = e.estado ? e.message : (e.message || "Sin conexión");
+  } finally { ocupado = false; $("s-foto-btn").disabled = $("s-texto-btn").disabled = false; }
+}
+
+function pintarEstimacion(c) {
+  comidaActual = c;
+  const d = $("s-estimacion");
+  d.classList.remove("oculto"); d.replaceChildren();
+  const rango = c.hidratos_min_g != null && c.hidratos_max_g != null && c.hidratos_min_g !== c.hidratos_max_g
+    ? ` (entre ${num(c.hidratos_min_g, 0)} y ${num(c.hidratos_max_g, 0)})` : "";
+  d.append(nodo("div", "estim-total", `${num(c.hidratos_g, 0)} g de hidratos${rango}`),
+    nodo("div", "suave", `Grasa ${num(c.grasa_g, 0)} g · proteína ${num(c.proteina_g, 0)} g · ${num(c.kcal, 0)} kcal`));
+  if (c.items.length) {
+    const ul = nodo("ul", "lista");
+    for (const i of c.items) ul.append(li(`${i.nombre}: ${num(i.gramos, 0)} g → ${num(i.hidratos, 0)} g de hidratos`));
+    d.append(ul);
+  }
+  if (c.alertas.length) { const ul = nodo("ul", "avisos"); for (const a of c.alertas) ul.append(nodo("li", "", a)); d.append(ul); }
+  const fila = nodo("div", "franja");
+  const ok = nodo("button", "primario", "Correcto, calcular dosis"); ok.type = "button";
+  const corr = nodo("button", "secundario", "Corregir"); corr.type = "button";
+  ok.addEventListener("click", () => confirmarComida({}));
+  corr.addEventListener("click", () => {
+    $("s-hc").value = String(c.hidratos_g ?? "").replace(".", ",");
+    $("s-hc-min").value = $("s-hc-max").value = "";
+    $("s-grasa").value = String(c.grasa_g ?? "").replace(".", ",");
+    $("s-prot").value = String(c.proteina_g ?? "").replace(".", ",");
+    $("s-estado").textContent = "Corrige lo que haga falta y pulsa «Leer la pluma y calcular».";
+    $("s-hc").focus();
+  });
+  fila.append(ok, corr);
+  d.append(fila, nodo("p", "suave pequeno", "Son estimaciones de los modelos: compruébalas antes de confirmar."));
+}
+
+async function confirmarComida(cambios) {
+  try {
+    const c = await pedir(`/api/comidas/${comidaActual.id}/revisar`, cambios);
+    const id = c.id;
+    comidaActual = null;
+    $("s-estimacion").classList.add("oculto");
+    conPluma("/api/sugerencias", { tipo: "comida", comida_id: id });
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(e.estado ? e.message : "Sin conexión", true);
+  }
+}
+
 // ------------------------------------------------------------------ navegación
 let temporizador, vista = "panel";
 const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: cargarRegistrar, tresiba: cargarTresiba, revisar: cargarRevisar };
@@ -716,6 +811,21 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-hc").addEventListener("submit", enviarHidratos);
   $("f-tresiba").addEventListener("submit", enviarTresiba);
   $("f-sug").addEventListener("submit", calcularDosis);
+  $("s-foto-btn").addEventListener("click", () => $("s-foto").click());
+  $("s-foto").addEventListener("change", async () => {
+    const f = $("s-foto").files[0];
+    $("s-foto").value = "";
+    if (!f) return;
+    try {
+      const imagen_b64 = await reducirFoto(f);
+      analizarComida("/api/comidas/foto", { id_cliente: nuevoId(), imagen_b64 });
+    } catch (e) { aviso(e.message, true); }
+  });
+  $("s-texto-btn").addEventListener("click", () => {
+    const texto = $("s-texto").value.trim();
+    if (texto.length < 3) return aviso("Describe la comida", true);
+    analizarComida("/api/comidas/texto", { id_cliente: nuevoId(), texto });
+  });
   const elegirTipo = (tipo) => {
     tipoSug = tipo;
     document.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("activo", x.dataset.tipo === tipo));

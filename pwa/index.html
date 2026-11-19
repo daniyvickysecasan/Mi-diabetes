@@ -101,6 +101,18 @@
 
     <!-- ============================================================ dosis (fase 3) -->
     <div id="v-dosis" class="vista oculto">
+      <section class="tarjeta">
+        <h2>Comida por foto</h2>
+        <input id="s-foto" type="file" accept="image/*" capture="environment" class="oculto">
+        <button id="s-foto-btn" type="button" class="primario">📷 Hacer foto de la comida</button>
+        <div class="describir">
+          <input id="s-texto" type="text" maxlength="1000" placeholder="…o descríbela: «arroz con pollo y un yogur»" aria-label="Descripción de la comida">
+          <button id="s-texto-btn" type="button" class="secundario">Analizar</button>
+        </div>
+        <p id="s-foto-estado" class="suave pequeno" role="status"></p>
+        <div id="s-estimacion" class="oculto" aria-live="polite"></div>
+      </section>
+
       <form id="f-sug" class="tarjeta" autocomplete="off">
         <h2>Calcular dosis de Fiasp</h2>
         <div class="chips" role="group" aria-label="Tipo">

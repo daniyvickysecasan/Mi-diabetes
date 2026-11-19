@@ -19,7 +19,7 @@ def _glucosa(con, ahora, valor=150, pendiente=0.0, hace_min=2):
 
 
 def _parametros(con, aprobar=True, ratio=None, sens=None, confianza="media"):
-    v = P.proponer(con, ratio or [{"desde": "00:00", "g_por_u": 10}, {"desde": "20:00", "g_por_u": 12}],
+    v = P.proponer(con, ratio or [{"desde": "00:00", "g_por_u": 10}],
                    sens or [{"desde": "00:00", "mgdl_por_u": 40}], "prueba", confianza=confianza)
     return P.aprobar(con, v["id"], "Daniel") if aprobar else v
 
@@ -148,7 +148,7 @@ def test_comida_sin_revisar_no_vale(con, ahora):
                        VALUES (%s, 'foto', 55, 50, 40, 65, 10, 20, false) RETURNING id""", (ahora,)).fetchone()["id"]
     with pytest.raises(SG.PeticionNoValida):
         SG.sugerir(con, ahora=ahora, comida_id=c, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
-    con.execute("UPDATE comidas SET revisada = true WHERE id = %s", (c,))
+    con.execute("UPDATE comidas SET revisada = true, revisada_en = now() WHERE id = %s", (c,))
     s = SG.sugerir(con, ahora=ahora, comida_id=c, hidratos_g=999, solicitud_lectura_id=_lectura_ok(con), dosis_apuntadas=True)
     assert float(s["hidratos_g"]) == 50 and s["comida_id"] == c      # manda la comida revisada
     assert s["incertidumbre"]["rango_u"] == [5.0, 7.5]
