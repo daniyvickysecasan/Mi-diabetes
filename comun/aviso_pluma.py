@@ -7,6 +7,8 @@ en la insulina activa mientras la pluma no las confirma (regla conservadora de l
 Dos motivos, en este orden:
 1. `dosis_sin_leer`: hay dosis apuntadas en la app que siguen `pendiente` (la pluma no ha enviado
    nada posterior) desde hace más del margen. Es la señal más clara de que falta leerla.
+   Si el recolector de LibreView está activo (lo mira cada pocas horas), el margen se cuenta hasta
+   su última lectura buena, no hasta ahora: así no avisa de dosis que LibreView aún no ha mirado.
 2. `sin_lecturas`: la última dosis que llegó de la pluma es más antigua que el umbral (o nunca ha
    llegado ninguna). Puede ser que no te hayas inyectado, por eso el texto dice "si te has inyectado".
 """
@@ -29,10 +31,13 @@ def _horas(td: timedelta) -> str:
 
 
 def evaluar(ahora: datetime, ultima_pluma: datetime | None, pendientes_app: list[datetime],
-            umbral_horas: float = UMBRAL_HORAS, margen_min: int = MARGEN_MIN) -> dict | None:
-    """Función pura. Devuelve el aviso o None si no hace falta leer la pluma."""
+            umbral_horas: float = UMBRAL_HORAS, margen_min: int = MARGEN_MIN,
+            ultima_lectura: datetime | None = None) -> dict | None:
+    """Función pura. Devuelve el aviso o None si no hace falta leer la pluma.
+    `ultima_lectura`: última lectura buena de LibreView (None = recolector de LibreView sin usar)."""
     base = {"ultima_pluma": ultima_pluma.isoformat() if ultima_pluma else None}
-    viejas = [t for t in pendientes_app if ahora - t >= timedelta(minutes=margen_min)]
+    corte = min(ahora, ultima_lectura) if ultima_lectura else ahora
+    viejas = [t for t in pendientes_app if corte - t >= timedelta(minutes=margen_min)]
     if viejas:
         n = len(viejas)
         desde = ahora - min(viejas)
@@ -56,4 +61,5 @@ def evaluar_bd(con, ahora: datetime, umbral_horas: float = UMBRAL_HORAS, margen_
     pend = [f["ts"] for f in con.execute(
         """SELECT ts FROM dosis WHERE origen = 'app' AND insulina = 'fiasp' AND estado_conciliacion = 'pendiente'
            AND ts BETWEEN %s AND %s""", (ahora - VENTANA_PENDIENTES, ahora)).fetchall()]
-    return evaluar(ahora, ultima, pend, umbral_horas, margen_min)
+    lectura = con.execute("SELECT ultimo_ok FROM estado_libreview").fetchone()
+    return evaluar(ahora, ultima, pend, umbral_horas, margen_min, lectura["ultimo_ok"] if lectura else None)

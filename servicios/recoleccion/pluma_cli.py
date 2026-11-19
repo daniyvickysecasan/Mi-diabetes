@@ -1,6 +1,6 @@
 """Línea de comandos del recolector de la pluma (web de LibreView → base → Nightscout).
 
-  python -m servicios.recoleccion.pluma_cli servicio           # bucle: SMS desde la app + informe cada INTERVALO_INFORME_S
+  python -m servicios.recoleccion.pluma_cli servicio           # bucle: SMS desde la app + informe cada INTERVALO_INFORME_S (4 h)
   python -m servicios.recoleccion.pluma_cli ciclo              # una vuelta (últimos 14 días, como la web)
   python -m servicios.recoleccion.pluma_cli historico [--dias 14]
   python -m servicios.recoleccion.pluma_cli retraso [--dias 7] # retraso inyección → visto, y frente a la app

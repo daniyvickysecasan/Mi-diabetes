@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 
 PATRON_CODIGO = re.compile(r"^[0-9]{4,8}$")
 CADUCIDAD_CODIGO = timedelta(minutes=10)     # sin código en este tiempo: hay que pedir otro SMS
-SONDEO_CAIDO = timedelta(hours=1)            # sin sincronizar en este tiempo: avisar
+INTERVALO_INFORME = timedelta(hours=4)       # cada cuánto lee LibreView el recolector (por defecto)
 
 
 class EstadoNoPermite(ValueError):
@@ -63,7 +63,7 @@ def dar_codigo(con, codigo: str) -> dict:
     return leer(con)
 
 
-def para_la_app(con, ahora: datetime | None = None) -> dict:
+def para_la_app(con, ahora: datetime | None = None, intervalo: timedelta = INTERVALO_INFORME) -> dict:
     """Lo que ve la app: estado, texto y si hay que mostrar el botón del SMS o la casilla del código.
     Nunca devuelve el código."""
     ahora = ahora or datetime.now(timezone.utc)
@@ -85,6 +85,8 @@ def para_la_app(con, ahora: datetime | None = None) -> dict:
         r |= {"accion": "esperar", "mensaje": "Comprobando el código con LibreView…"}
     elif estado == "error":
         r |= {"mensaje": "No se pueden leer las dosis de LibreView: " + (e["error"] or "error desconocido")}
-    elif estado == "ok" and e["ultimo_ok"] and e["ultimo_ok"] < ahora - SONDEO_CAIDO:
-        r |= {"estado": "caido", "mensaje": "Hace más de una hora que no se leen las dosis de LibreView."}
+    elif estado == "ok" and e["ultimo_ok"] and e["ultimo_ok"] < ahora - (2 * intervalo + timedelta(minutes=30)):
+        # Se han perdido al menos dos lecturas seguidas.
+        horas = round((ahora - e["ultimo_ok"]).total_seconds() / 3600)
+        r |= {"estado": "caido", "mensaje": f"Hace {horas} h que no se leen las dosis de LibreView."}
     return r
