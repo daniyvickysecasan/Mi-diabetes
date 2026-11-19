@@ -197,3 +197,85 @@ def test_el_trabajador_no_calcula_insulina():
     assert "calcular_bolo" not in nombres
     for tabla in ("INSERT INTO dosis", "sugerencias", "UPDATE dosis"):
         assert tabla not in src
+
+
+# ------------------------------------------------------------------ rondas adaptativas
+class TablaVacia:
+    def buscar(self, nombre, nombre_en):
+        return None, 0
+
+
+def respuesta(hc):
+    return {"items": [{"nombre": "plato", "nombre_en": "dish", "gramos": 300, "hidratos_g": hc, "fibra_g": 0,
+                       "grasa_g": 10, "proteina_g": 20, "azucares_g": 0, "kcal": 400}]}
+
+
+def consultas(valores):
+    """Consulta simulada: cada modelo devuelve sus hidratos por turno."""
+    hechas = []
+
+    def consultar(modelo, prompt, b64):
+        hechas.append(modelo)
+        v = valores[modelo]
+        return respuesta(v.pop(0) if isinstance(v, list) else v)
+    consultar.hechas = hechas
+    return consultar
+
+
+def test_una_ronda_si_los_modelos_coinciden(monkeypatch):
+    monkeypatch.setattr(T.C, "MODELOS", ["a", "b", "c"])
+    monkeypatch.setattr(T.C, "MODELOS_TEXTO", ["a", "b", "c"])
+    q = consultas({"a": 60, "b": 62, "c": 58})
+    r = T.analizar_adaptativo(TablaVacia(), imagen=JPEG, consultar=q)
+    assert q.hechas == ["a", "b", "c"] and r["rondas"] == 1 and r["hc_bolo"] == 60
+    assert not any("repitió" in a for a in r["alertas"])
+
+
+def test_segunda_ronda_si_discrepan_empezando_por_el_ultimo(monkeypatch):
+    monkeypatch.setattr(T.C, "MODELOS", ["a", "b", "c"])
+    monkeypatch.setattr(T.C, "MODELOS_TEXTO", ["a", "b", "c"])
+    q = consultas({"a": [60, 61], "b": [62, 60], "c": [100, 59]})
+    r = T.analizar_adaptativo(TablaVacia(), texto="paella", consultar=q)
+    assert q.hechas == ["a", "b", "c", "c", "b", "a"] and r["rondas"] == 2
+    assert "repitió" in r["alertas"][0]
+    assert T.resumen(r)["estimaciones"]["rondas"] == 2
+
+
+def test_nunca_mas_de_las_rondas_maximas(monkeypatch):
+    monkeypatch.setattr(T.C, "MODELOS", ["a", "b"])
+    monkeypatch.setattr(T.C, "MODELOS_TEXTO", ["a", "b"])
+    monkeypatch.setattr(T, "RONDAS_MAX", 2)
+    q = consultas({"a": 20, "b": 90})
+    r = T.analizar_adaptativo(TablaVacia(), texto="x", consultar=q)
+    assert len(q.hechas) == 4 and r["rondas"] == 2
+    assert any("difieren mucho" in a for a in r["alertas"])     # la discrepancia sigue avisada
+
+
+def test_un_modelo_caido_no_para_el_analisis(monkeypatch):
+    monkeypatch.setattr(T.C, "MODELOS", ["a", "b"])
+    monkeypatch.setattr(T.C, "MODELOS_TEXTO", ["a", "b"])
+
+    def consultar(modelo, prompt, b64):
+        if modelo == "a":
+            raise TimeoutError("300 s")
+        return respuesta(50)
+    r = T.analizar_adaptativo(TablaVacia(), texto="x", consultar=consultar)
+    assert r["hc_bolo"] == 50 and r["errores"] == ["a: 300 s"]
+
+
+def test_la_consulta_acota_el_contexto(monkeypatch):
+    enviado = {}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"message": {"content": '{"items": []}'}, "load_duration": 2e9, "eval_count": 10}
+
+    def post(url, timeout, json):
+        enviado.update(json)
+        return Resp()
+    monkeypatch.setattr(T.requests, "post", post)
+    assert T.consultar_ollama("qwen3-vl:32b", "hola", "b64") == {"items": []}
+    assert enviado["options"]["num_ctx"] == T.CONTEXTO == 8192 and enviado["keep_alive"]
