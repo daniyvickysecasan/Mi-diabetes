@@ -8,13 +8,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api import auth, dosis, glucosa, libreview, sugerencias
+from api import auth, comidas, dosis, glucosa, libreview, sugerencias
 from comun.ajustes import Ajustes
 from comun.bd import conectar
 
 PWA = Path(__file__).resolve().parent.parent / "pwa"
 
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
        "connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; "
        "base-uri 'none'; form-action 'self'")
 
@@ -50,6 +50,7 @@ def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
     app.include_router(dosis.router)
     app.include_router(libreview.router)
     app.include_router(sugerencias.router)
+    app.include_router(comidas.router)
     app.mount("/", StaticFiles(directory=PWA, html=True), name="pwa")
     return app
 

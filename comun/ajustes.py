@@ -36,6 +36,9 @@ class Ajustes:
     intervalo_pluma_s: int = 5            # cada cuánto mira la base (lectura pedida, SMS, código)
     solape_pluma_h: int = 48              # relee los dos últimos días: la pluma sube con retraso
 
+    # Fotos de comidas (volumen local; nunca en el repositorio)
+    ruta_fotos: str = "/datos/fotos"
+
     # Rangos (mg/dL), consenso internacional
     rango_bajo: int = 70
     rango_alto: int = 180
@@ -73,6 +76,7 @@ class Ajustes:
             libreview_dispositivo=e("LIBREVIEW_DISPOSITIVO_CONFIANZA") or "",
             intervalo_pluma_s=int(e("INTERVALO_PLUMA_S") or 5),
             solape_pluma_h=int(e("SOLAPE_PLUMA_H") or 48),
+            ruta_fotos=e("RUTA_FOTOS") or "/datos/fotos",
             rango_bajo=int(e("RANGO_BAJO") or 70),
             rango_alto=int(e("RANGO_ALTO") or 180),
             zona_horaria=e("ZONA_HORARIA") or "Europe/Madrid",

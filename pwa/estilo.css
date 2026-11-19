@@ -114,3 +114,10 @@ select { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border:
 .confirmar { margin-top: 10px; padding: 12px; border-radius: 12px; background: rgba(245, 158, 11, .15); }
 .confirmar p { margin: 0 0 10px; }
 .confirmar button { width: 100%; }
+
+.describir { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
+.describir button { width: auto; }
+.estim-total { font-size: 1.3rem; font-weight: 700; margin: 10px 0 4px; }
+#s-estimacion .lista li { font-size: .85rem; }
+#s-estimacion .franja { margin-top: 10px; }
+#s-estimacion .franja button { width: 100%; }
