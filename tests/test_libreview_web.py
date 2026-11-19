@@ -235,15 +235,20 @@ def test_la_solicitud_se_cierra_con_su_resultado(con, lv, ruta, ahora):
     assert f["resultado"] == "error" and f["atendida_en"] is not None and CLAVE not in f["detalle"]
 
 
-def test_la_hora_en_curso_espera_a_cerrarse(con, ruta):
+def test_la_hora_en_curso_cuenta_ya(con, ruta):
+    """19-11-2026: 2 U puestas a las 19:10 no contaban hasta las 20:00 y la insulina activa salía 0."""
     ahora = datetime.now(timezone.utc).replace(minute=30, second=0, microsecond=0)
     en_curso = ahora.astimezone(MADRID).replace(minute=10, tzinfo=None)
     lv = LibreViewSimulado(password=CLAVE, inyecciones=[(en_curso - timedelta(hours=2), 4), (en_curso, 3)])
     c = _cliente(lv, ruta)
     r = _dentro(con, c, ahora)
-    assert r["dosis"]["insertadas"] == 1                # la de las :10 de esta hora, todavía no
-    r = _leer(con, c, ahora=ahora + timedelta(hours=1))
-    assert r["dosis"]["insertadas"] == 1
+    assert r["dosis"]["insertadas"] == 2                # también la de las :10 de esta hora
+    # Otra inyección en esa misma hora: la guardada no se toca, se anota para revisar.
+    lv.inyecciones = lv.inyecciones + [(en_curso + timedelta(minutes=15), 1)]
+    r = _leer(con, c, ahora=ahora + timedelta(minutes=20))
+    assert r["dosis"]["insertadas"] == 0 and r["cambios"] == 1
+    assert {f["motivo"] for f in con.execute("SELECT motivo FROM cambios_pluma_libreview")} == {"otra_inyeccion"}
+    assert [float(f["unidades"]) for f in con.execute("SELECT unidades FROM dosis ORDER BY ts")] == [4.0, 3.0]
 
 
 def test_id_no_depende_de_las_unidades(con, lv, ruta, ahora):
