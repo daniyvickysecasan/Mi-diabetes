@@ -153,6 +153,16 @@
 
     <!-- ============================================================ registrar -->
     <div id="v-registrar" class="vista oculto">
+      <form id="f-chat" class="tarjeta" autocomplete="off">
+        <h2>Apuntar lo que pasa</h2>
+        <div class="describir">
+          <input id="chat-texto" type="text" maxlength="1000" placeholder="«salgo a correr media hora», «unas cervezas»…" aria-label="Qué está pasando">
+          <button class="secundario" type="submit">Apuntar</button>
+        </div>
+        <ul id="chat-lista" class="lista chat" aria-live="polite"></ul>
+        <p class="suave pequeno">Un modelo de tu PC lo ordena y tú lo confirmas. Sirve para entender tu glucosa; no cambia ninguna dosis.</p>
+      </form>
+
       <form id="f-fiasp" class="tarjeta" autocomplete="off">
         <h2>Dosis de Fiasp</h2>
         <label for="u-fiasp">Unidades</label>

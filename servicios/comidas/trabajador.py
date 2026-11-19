@@ -15,6 +15,7 @@ Variables de entorno:
   COMIDAS_MODELOS         lista separada por comas (por defecto, la de config.py)
   COMIDAS_RONDAS_MAX      rondas como máximo (por defecto 2: la segunda solo si hay discrepancias)
   COMIDAS_CONTEXTO        tokens de contexto por consulta (por defecto 8192)
+  CHAT_MODELO             modelo para el registro tipo chat (por defecto gemma3:27b)
   RUTA_FOTOS              carpeta de las fotos (volumen local)
   RUTA_ALIMENTOS_USDA     base USDA en SQLite generada con preparar_bd.py (opcional)
 """
@@ -32,6 +33,7 @@ import requests
 
 from comun.ajustes import Ajustes
 from comun.bd import conectar
+from servicios.comidas import chat
 
 _AQUI = Path(__file__).resolve().parent
 if str(_AQUI) not in sys.path:          # el prototipo importa `config` por su nombre
@@ -45,6 +47,7 @@ RUTA_FOTOS = Path(os.environ.get("RUTA_FOTOS", "/datos/fotos"))
 RONDAS_MAX = 2
 CONTEXTO = 8192          # tokens: foto de 1600 px + instrucciones caben de sobra. Con los 32 768 por
                          # defecto, qwen3-vl:32b llena los 32 GB de la GPU y se vuelve lentísimo.
+CHAT_MODELO = "gemma3:27b"
 MANTENER = "30m"         # tiempo que Ollama deja el modelo cargado tras una consulta
 
 
@@ -54,7 +57,8 @@ def configurar() -> None:
     C.OLLAMA_URL = (e("OLLAMA_URL") or C.OLLAMA_URL).rstrip("/")
     if e("COMIDAS_MODELOS"):
         C.MODELOS = C.MODELOS_TEXTO = [m.strip() for m in e("COMIDAS_MODELOS").split(",") if m.strip()]
-    global RONDAS_MAX
+    global RONDAS_MAX, CHAT_MODELO
+    CHAT_MODELO = e("CHAT_MODELO") or CHAT_MODELO
     global CONTEXTO
     if e("COMIDAS_CONTEXTO"):
         CONTEXTO = int(e("COMIDAS_CONTEXTO"))
@@ -188,6 +192,11 @@ def vuelta(con, tabla, analizar_plato=None) -> dict | None:
     return analizar(con, c, tabla, analizar_plato) if c else None
 
 
+def vuelta_chat(con) -> dict | None:
+    return chat.vuelta(con, lambda texto: chat.consultar(C.OLLAMA_URL, CHAT_MODELO, texto, timeout=C.TIMEOUT),
+                       CHAT_MODELO)
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(prog="comidas")
@@ -198,19 +207,21 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     configurar()
     tabla = N.TablaAlimentos(C.RUTA_BD, C.RUTA_PROPIOS)
-    log.info("Modelos %s, hasta %s rondas, en %s; base USDA %s", C.MODELOS, RONDAS_MAX, C.OLLAMA_URL,
+    log.info("Modelos %s, hasta %s rondas, chat con %s, en %s; base USDA %s", C.MODELOS, RONDAS_MAX, CHAT_MODELO, C.OLLAMA_URL,
              "sí" if tabla.usda else "no (solo alimentos propios y estimación del modelo)")
     aj = Ajustes.desde_entorno()
     with conectar(aj.database_url, autocommit=True) as con:
         # Lo que quedó a medias si el trabajador se paró vuelve a la cola.
         con.execute("UPDATE comidas SET estado_analisis = 'pendiente' WHERE estado_analisis = 'analizando'")
+        con.execute("UPDATE eventos_chat SET estado_analisis = 'pendiente' WHERE estado_analisis = 'analizando'")
         if a.orden == "una":
             print(json.dumps(analizar(con, con.execute("SELECT * FROM comidas WHERE id = %s", (a.id,)).fetchone(), tabla),
                              ensure_ascii=False))
             return 0
         while True:
             try:
-                if vuelta(con, tabla) is None:
+                # Primero las comidas (esperan una dosis); el chat, después.
+                if vuelta(con, tabla) is None and vuelta_chat(con) is None:
                     time.sleep(INTERVALO_S)
             except Exception:
                 log.exception("Fallo en la vuelta")

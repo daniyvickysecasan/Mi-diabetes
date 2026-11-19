@@ -755,9 +755,91 @@ async function confirmarComida(cambios) {
   }
 }
 
+// ------------------------------------------------------------------ registro tipo chat (fase 3)
+// Un modelo local ordena la frase (tipo, hora, estimación con incertidumbre); tú la confirmas.
+// Estos eventos no entran en ningún cálculo de dosis. Sin avisos por alcohol (decisión de Daniel).
+const TIPOS_CHAT = { comida: "Comida", bebida: "Bebida", alcohol: "Alcohol", ejercicio: "Ejercicio",
+  enfermedad: "Enfermedad", estres: "Estrés", sueno: "Sueño", otro: "Otro" };
+let chatT;
+
+function detalleChat(e) {
+  const partes = [TIPOS_CHAT[e.tipo] || "Sin tipo"];
+  if (e.inicio) partes.push(e.fin ? `${fechaHora(e.inicio)}–${hora(e.fin)}` : fechaHora(e.inicio));
+  const est = e.estimacion || {};
+  if (est.hidratos_g) partes.push(`${est.hidratos_g[0]}–${est.hidratos_g[1]} g de hidratos`);
+  if (est.bebidas != null) partes.push(`${num(est.bebidas)} bebidas`);
+  if (est.intensidad) partes.push(`intensidad ${est.intensidad}`);
+  if (est.duracion_min != null && !e.fin) partes.push(`${est.duracion_min} min`);
+  if (e.incertidumbre) partes.push(`incertidumbre ${e.incertidumbre}`);
+  return partes.join(" · ");
+}
+
+async function accionChat(ruta, cuerpo = {}) {
+  try { await pedir(ruta, cuerpo); cargarChat(); }
+  catch (e) { if (e.estado === 401) return mostrar("entrada"); aviso(e.estado ? e.message : "Sin conexión", true); }
+}
+
+function itemChat(e) {
+  const it = nodo("li");
+  it.append(nodo("div", "texto", e.texto));
+  if (e.analisis === "pendiente" || e.analisis === "analizando") {
+    it.append(nodo("div", "ev-detalle suave", "Ordenando con el modelo de tu PC…"));
+  } else {
+    if (e.resumen) it.append(nodo("div", "ev-detalle", e.resumen));
+    if (e.analisis === "error") it.append(nodo("div", "ev-detalle suave", "No se ha podido interpretar: elige el tipo a mano."));
+    it.append(nodo("div", "ev-detalle suave", detalleChat(e) + (e.estado === "confirmado" ? " · confirmado" : "")));
+  }
+  if (e.estado === "pendiente" && e.analisis !== "pendiente" && e.analisis !== "analizando") {
+    const fila = nodo("div", "acciones");
+    const sel = document.createElement("select");
+    sel.setAttribute("aria-label", "Tipo");
+    for (const [k, v] of Object.entries(TIPOS_CHAT)) sel.append(new Option(v, k));
+    sel.value = e.tipo || "otro";
+    const ok = nodo("button", "primario", "Confirmar"); ok.type = "button";
+    ok.addEventListener("click", () => accionChat(`/api/chat/${e.id}/confirmar`, sel.value !== e.tipo ? { tipo: sel.value } : {}));
+    const no = nodo("button", "secundario", "Descartar"); no.type = "button";
+    no.addEventListener("click", () => accionChat(`/api/chat/${e.id}/descartar`));
+    fila.append(sel, ok, no);
+    if (e.tipo === "comida") {
+      const d = nodo("button", "secundario", "Calcular dosis"); d.type = "button";
+      d.addEventListener("click", () => { ir("dosis"); $("s-texto").value = e.texto; $("s-texto").focus(); });
+      fila.append(d);
+    }
+    it.append(fila);
+  }
+  return it;
+}
+
+async function cargarChat() {
+  clearTimeout(chatT);
+  try {
+    const { eventos } = await pedir("/api/chat?horas=48");
+    const ul = $("chat-lista");
+    ul.replaceChildren(...eventos.slice(0, 15).map(itemChat));
+    if (eventos.some((e) => e.analisis === "pendiente" || e.analisis === "analizando")
+        && !$("v-registrar").classList.contains("oculto")) chatT = setTimeout(cargarChat, 4000);
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+  }
+}
+
+async function enviarChat(ev) {
+  ev.preventDefault();
+  const texto = $("chat-texto").value.trim();
+  if (texto.length < 2) return aviso("Escribe qué está pasando", true);
+  try {
+    await pedir("/api/chat", { id_cliente: nuevoId(), texto });
+    $("chat-texto").value = "";
+    cargarChat();
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(e.estado ? e.message : "Sin conexión: no se ha apuntado", true);
+  }
+}
+
 // ------------------------------------------------------------------ navegación
 let temporizador, vista = "panel";
-const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: cargarRegistrar, tresiba: cargarTresiba, revisar: cargarRevisar };
+const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: () => { cargarRegistrar(); cargarChat(); }, tresiba: cargarTresiba, revisar: cargarRevisar };
 const refrescarVista = () => CARGAS[vista]();
 
 function ir(cual, foco) {
@@ -808,6 +890,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-g]").forEach((b) => b.addEventListener("click", () => { $("hc-gramos").value = b.dataset.g; }));
   for (const id of ["t-fiasp", "hc-t", "tr-desde"]) $(id).addEventListener("input", () => { $(id).dataset.tocado = "1"; });
   $("f-fiasp").addEventListener("submit", enviarFiasp);
+  $("f-chat").addEventListener("submit", enviarChat);
   $("f-hc").addEventListener("submit", enviarHidratos);
   $("f-tresiba").addEventListener("submit", enviarTresiba);
   $("f-sug").addEventListener("submit", calcularDosis);
