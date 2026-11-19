@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 
 PATRON_CODIGO = re.compile(r"^[0-9]{4,8}$")
 CADUCIDAD_CODIGO = timedelta(minutes=10)     # sin código en este tiempo: hay que pedir otro SMS
+ESPERA_TRAS_FALLO = timedelta(minutes=2)     # tras un SMS fallido, no dejar pedir otro hasta pasado esto
 SIN_RESPUESTA = timedelta(minutes=2)         # lectura pedida sin atender en este tiempo: el lector no está
 
 
@@ -51,6 +52,9 @@ def pedir_sms(con) -> dict:
     e = leer(con)
     if e["estado"] not in ("necesita_codigo", "esperando_codigo", "error", "sin_iniciar"):
         raise EstadoNoPermite("LibreView no está pidiendo el código ahora")
+    # Tras un intento fallido, esperar: LibreView corta con HTTP 429 si se insiste.
+    if e["error"] and e["cambiado_en"] > datetime.now(timezone.utc) - ESPERA_TRAS_FALLO:
+        raise EstadoNoPermite("Espera un par de minutos antes de pedir otro SMS")
     poner(con, "sms_pedido", codigo=None, destino_sms=None, error=None)
     return leer(con)
 

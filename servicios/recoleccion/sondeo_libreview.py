@@ -19,7 +19,7 @@ from psycopg.types.json import Jsonb
 
 from comun import estado_libreview as est
 from servicios.recoleccion import pluma
-from servicios.recoleccion.libreview import ErrorLibreView, Lectura, NecesitaCodigo, dosis_del_informe
+from servicios.recoleccion.libreview import YA_DENTRO, ErrorLibreView, Lectura, NecesitaCodigo, dosis_del_informe
 
 log = logging.getLogger("pluma")
 
@@ -108,10 +108,15 @@ def vuelta(con, cliente, escritor=None, sincronizar: bool | None = None, dias: i
                 est.poner(con, "necesita_codigo", error=str(x)[:300])
                 log.error("LibreView no mandó el SMS: %s", x)
                 return {"accion": "sms_fallido", "error": str(x)}
-            est.poner(con, "esperando_codigo", destino_sms=destino, error=None)
-            log.info("SMS de LibreView pedido")
-            return {"accion": "sms_enviado"}
-        if estado == "codigo_recibido":
+            if destino == YA_DENTRO:
+                est.poner(con, "ok", error=None, ultimo_ok=ahora)
+                log.info("LibreView deja entrar sin SMS")
+                sincronizar = True
+            else:
+                est.poner(con, "esperando_codigo", destino_sms=destino, error=None)
+                log.info("SMS de LibreView pedido")
+                return {"accion": "sms_enviado"}
+        elif estado == "codigo_recibido":
             codigo = e["codigo"]
             est.poner(con, "codigo_recibido", codigo=None)          # el código no se queda en la base
             try:

@@ -337,6 +337,30 @@ def test_sms_rechazado_deja_reintentar_y_dice_el_motivo(con, lv, ruta, ahora):
     assert "yo@ejemplo.test" not in e["error"]
     app = E.para_la_app(con)
     assert app["accion"] == "pedir_sms" and "RegionMismatch" in app["mensaje"]
-    lv.fallar_sms = False                               # se puede volver a pedir
+    with pytest.raises(E.EstadoNoPermite, match="Espera"):   # sin insistir (LibreView da 429)
+        E.pedir_sms(con)
+    con.execute("UPDATE estado_libreview SET cambiado_en = now() - interval '3 minutes'")
+    lv.fallar_sms = False                               # pasado el rato, se puede volver a pedir
     E.pedir_sms(con)
     assert vuelta(con, c, ahora=ahora)["accion"] == "sms_enviado"
+
+
+def test_pedir_sms_entra_de_nuevo_y_no_reutiliza_un_token_viejo(con, lv, ruta, ahora):
+    c = _cliente(lv, ruta)
+    _leer(con, c, ahora=ahora)                          # deja guardado un token parcial
+    lv.parciales.clear()                                # LibreView lo da por caducado
+    c2 = _cliente(lv, ruta)                             # recolector reiniciado, con la sesión del disco
+    logins = lv.logins
+    E.pedir_sms(con)
+    assert vuelta(con, c2, ahora=ahora)["accion"] == "sms_enviado"
+    assert lv.logins == logins + 1 and lv.sms_enviados == 1
+
+
+def test_si_libreview_deja_entrar_sin_sms_lee_directamente(con, lv, ruta, ahora):
+    c = _cliente(lv, ruta)
+    _dentro(con, c, ahora)                              # ya hay dispositivo de confianza
+    E.poner(con, "necesita_codigo")                     # p. ej. un aviso viejo
+    E.pedir_sms(con)
+    r = vuelta(con, c, ahora=ahora)
+    assert r["accion"] == "sincronizado" and lv.sms_enviados == 1   # solo el del primer día
+    assert E.leer(con)["estado"] == "ok"

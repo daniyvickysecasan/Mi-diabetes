@@ -44,6 +44,9 @@ PASOS_EN_LA_WEB = {"tou", "pp", "verifyemail", "consent"}   # condiciones nuevas
 log = logging.getLogger("pluma")
 
 
+YA_DENTRO = "ya_dentro"
+
+
 class ErrorLibreView(RuntimeError):
     pass
 
@@ -234,11 +237,22 @@ class ClienteLibreView:
         self._aceptar_entrada(d)
 
     def pedir_sms(self) -> str | None:
-        """Pide a LibreView que mande el SMS. Devuelve el destino enmascarado si lo da."""
-        if not self.sesion.token_parcial:
-            self.entrar()                                       # renueva el token parcial
-        datos = self._peticion("POST", "/auth/continue/2fa/sendcode", {"isPrimaryMethod": True},
-                               token=self.sesion.token_parcial)
+        """Pide a LibreView que mande el SMS. Devuelve el destino enmascarado si lo da, o YA_DENTRO si
+        LibreView deja entrar sin código. Siempre entra de nuevo antes: el token parcial de un intento
+        anterior puede haber caducado, y así se recalcula también el Account-Id."""
+        self.sesion.token_parcial = None
+        try:
+            self.entrar()
+            return YA_DENTRO                                    # no hacía falta el SMS
+        except NecesitaCodigo:
+            pass
+        try:
+            datos = self._peticion("POST", "/auth/continue/2fa/sendcode", {"isPrimaryMethod": True},
+                                   token=self.sesion.token_parcial)
+        except ErrorLibreView:
+            self.sesion.token_parcial = None                    # no se reutiliza tras un fallo
+            self.sesion.guardar(self.ruta)
+            raise
         if datos.get("status") not in (0, 1, 2):
             raise ErrorLibreView(f"LibreView no mandó el SMS (status {datos.get('status')})")
         d = datos.get("data") or {}
