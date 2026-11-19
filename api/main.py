@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api import auth, dosis, glucosa
+from api import auth, dosis, glucosa, libreview
 from comun.ajustes import Ajustes
 from comun.bd import conectar
 
@@ -48,6 +48,7 @@ def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(glucosa.router)
     app.include_router(dosis.router)
+    app.include_router(libreview.router)
     app.mount("/", StaticFiles(directory=PWA, html=True), name="pwa")
     return app
 

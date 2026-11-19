@@ -68,3 +68,41 @@ class ClienteNightscout:
             medio = desde + (hasta - desde) / 2
             return self.tratamientos(desde, medio) + self.tratamientos(medio, hasta)
         return datos
+
+
+class EscritorNightscout:
+    """Escritura de tratamientos (API v1). Token de un sujeto con rol "careportal".
+
+    Separado del cliente de lectura a propósito: el recolector de glucosa sigue con su token de
+    solo lectura y solo el recolector de la pluma tiene permiso para crear tratamientos.
+    Nightscout v1 hace upsert por (created_at, eventType): reenviar la misma dosis no la duplica.
+    """
+
+    def __init__(self, url: str, token: str, cliente: httpx.Client | None = None, timeout: float = 30):
+        if not url or not token:
+            raise ErrorNightscout("Faltan NIGHTSCOUT_URL o NIGHTSCOUT_TOKEN_ESCRITURA")
+        self.url = url.rstrip("/")
+        self.token = token
+        self.http = cliente or httpx.Client(timeout=timeout)
+
+    def crear_tratamiento(self, tratamiento: dict) -> str | None:
+        """Crea (o actualiza) un tratamiento y devuelve su _id si Nightscout lo da."""
+        ruta = "/api/v1/treatments"
+        try:
+            r = self.http.post(f"{self.url}{ruta}", params={"token": self.token}, json=[tratamiento],
+                               headers={"Accept": "application/json"})
+        except Exception as e:
+            raise ErrorNightscout(f"{ruta}: {type(e).__name__}: {e}".replace(self.token, "***")) from None
+        if r.status_code in (401, 403):
+            raise ErrorNightscout(f"{ruta}: HTTP {r.status_code} (¿el sujeto tiene rol careportal?)")
+        if r.status_code >= 400:
+            raise ErrorNightscout(f"{ruta}: HTTP {r.status_code}")
+        try:
+            datos = r.json()
+        except Exception:
+            return None
+        if isinstance(datos, list) and datos and isinstance(datos[0], dict):
+            return datos[0].get("_id")
+        if isinstance(datos, dict):
+            return datos.get("_id")
+        return None

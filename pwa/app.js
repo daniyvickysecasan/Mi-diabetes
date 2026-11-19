@@ -148,6 +148,7 @@ async function refrescar() {
     pintarTir($("tir24"), "24 h", p.tir_24h);
     pintarTir($("tir14"), "14 días", p.tir_14d);
     pintarFase2(p);
+    estadoLibreView();
     const r = p.recoleccion;
     $("recoleccion").textContent = r.error ? `Recolección con error: ${r.error}` :
       r.ultima ? `Recolectado a las ${hora(r.ultima)}` : "Recolección sin ejecutar";
@@ -252,6 +253,57 @@ async function registrar(ruta, cuerpo, texto) {
   else aviso(`Sin conexión: ${texto} queda en cola y se enviará solo`);
   refrescarVista();
 }
+
+// ------------------------------------------------------------------ LibreView (lectura y código del SMS)
+// LibreView solo se lee cuando se pide. La app deja la petición en la base y el recolector la
+// atiende en unos segundos.
+let sondeoLv = null, esperandoDesde = 0, antesEsperando = false;
+
+function pintarLibreView(e) {
+  $("lv-ultimo").textContent = e.ultimo_ok ? `· leída a las ${hora(e.ultimo_ok)}` : "";
+  $("lv-actualizar").disabled = e.accion === "esperar";
+  const acabaDeLeer = antesEsperando && e.accion !== "esperar";
+  antesEsperando = e.accion === "esperar";
+  if (acabaDeLeer && e.estado === "ok") { refrescar(); }
+  const caja = $("aviso-libreview");
+  caja.classList.toggle("oculto", !e.mensaje);
+  $("lv-texto").textContent = e.mensaje || "";
+  $("lv-sms").classList.toggle("oculto", e.accion !== "pedir_sms");
+  const f = $("lv-form");
+  const ver = e.accion === "codigo";
+  if (ver && f.classList.contains("oculto")) setTimeout(() => $("lv-codigo").focus(), 50);
+  f.classList.toggle("oculto", !ver);
+  // Mientras el recolector trabaja, mira cada 3 s (máximo 2 min).
+  clearTimeout(sondeoLv);
+  if (e.accion !== "esperar") { esperandoDesde = 0; return; }
+  esperandoDesde ||= Date.now();
+  if (Date.now() - esperandoDesde < 120e3) sondeoLv = setTimeout(estadoLibreView, 3000);
+}
+
+async function estadoLibreView() {
+  try { pintarLibreView(await pedir("/api/libreview/estado")); } catch { /* sin conexión: se reintenta */ }
+}
+
+async function accionLibreView(ruta, cuerpo) {
+  try {
+    esperandoDesde = 0;
+    pintarLibreView(await pedir(ruta, cuerpo));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(e.message, true);
+    estadoLibreView();
+  }
+}
+
+$("lv-sms").addEventListener("click", () => accionLibreView("/api/libreview/sms", {}));
+$("lv-actualizar").addEventListener("click", () => accionLibreView("/api/libreview/actualizar", {}));
+$("lv-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const codigo = $("lv-codigo").value.replace(/\D/g, "");
+  if (codigo.length < 4) return aviso("El código son de 4 a 8 cifras", true);
+  $("lv-codigo").value = "";
+  accionLibreView("/api/libreview/codigo", { codigo });
+});
 
 // ------------------------------------------------------------------ panel (fase 2)
 function pintarFase2(p) {

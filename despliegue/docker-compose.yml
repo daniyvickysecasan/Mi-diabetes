@@ -10,6 +10,9 @@
 #
 # Túnel de Cloudflare (cuando esté configurado):
 #   docker compose --profile tunel up -d
+#
+# Recolector de la pluma (LibreView), cuando esté confirmado:
+#   docker compose --profile pluma up -d
 
 name: mi-diabetes
 
@@ -59,6 +62,16 @@ services:
     <<: *app
     command: ["python", "-m", "servicios.recoleccion", "servicio"]
 
+  # Dosis de la pluma desde la web de LibreView → base → Nightscout. Con perfil propio:
+  #   docker compose --profile pluma up -d
+  # El código del SMS se escribe en la app; el "dispositivo de confianza" queda en el volumen.
+  recolector-pluma:
+    <<: *app
+    profiles: ["pluma"]
+    command: ["python", "-m", "servicios.recoleccion.pluma_cli", "servicio"]
+    volumes:
+      - sesion-libreview:/datos/libreview
+
   api:
     <<: *app
     ports:
@@ -93,3 +106,4 @@ services:
 
 volumes:
   datos_bd:
+  sesion-libreview:

@@ -53,6 +53,19 @@
 
       <div id="aviso-pluma" class="aviso aviso-pluma oculto" role="status"></div>
 
+      <p class="lv-actualizar"><button id="lv-actualizar" class="enlace" type="button">Actualizar dosis de la pluma</button>
+        <span id="lv-ultimo"></span></p>
+
+      <div id="aviso-libreview" class="aviso aviso-pluma oculto" role="status">
+        <p id="lv-texto"></p>
+        <button id="lv-sms" class="primario oculto" type="button">Enviarme el SMS</button>
+        <form id="lv-form" class="oculto">
+          <input id="lv-codigo" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{4,8}"
+                 maxlength="8" placeholder="Código del SMS" aria-label="Código del SMS">
+          <button class="primario" type="submit">Enviar código</button>
+        </form>
+      </div>
+
       <section class="tarjeta">
         <h2>Insulina activa</h2>
         <div class="iob"><span id="iob">--</span> <span class="suave unidad">U de Fiasp</span></div>

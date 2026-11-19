@@ -81,3 +81,31 @@ def test_un_cebado_descartado_tambien_prueba_que_se_leyo(con):
 def test_dosis_futuras_no_cuentan_como_lectura(con):
     _dosis(con, AHORA + timedelta(hours=1), 3, "pluma_libreview", "p1")
     assert AP.evaluar_bd(con, AHORA)["ultima_pluma"] is None
+
+
+def test_con_libreview_cada_pocas_horas_cuenta_hasta_la_ultima_lectura():
+    dosis = AHORA - timedelta(hours=2)
+    # LibreView se leyó hace 3 h (antes de la dosis): aún no ha podido verla, no se avisa.
+    assert AP.evaluar(AHORA, h(3), [dosis], ultima_lectura=AHORA - timedelta(hours=3)) is None
+    # Se leyó hace 1 h (1 h después de la dosis) y no estaba: falta leer la pluma.
+    a = AP.evaluar(AHORA, h(3), [dosis], ultima_lectura=AHORA - timedelta(hours=1))
+    assert a["motivo"] == "dosis_sin_leer" and "2 h" in a["texto"]
+    # Leída solo 20 min después de la dosis: dentro del margen, sin aviso todavía.
+    assert AP.evaluar(AHORA, h(3), [dosis], ultima_lectura=dosis + timedelta(minutes=20)) is None
+
+
+def test_aviso_en_la_base_usa_la_ultima_lectura_de_libreview(con):
+    from datetime import datetime, timezone
+    ahora = datetime.now(timezone.utc)
+    con.execute("INSERT INTO dosis (ts, unidades, insulina, origen, id_externo) VALUES (%s, 4, 'fiasp', 'app', 'a-1')",
+                (ahora - timedelta(hours=2),))
+    con.execute("UPDATE estado_libreview SET estado='ok', ultimo_ok=%s", (ahora - timedelta(hours=3),))
+    assert (AP.evaluar_bd(con, ahora) or {}).get("motivo") != "dosis_sin_leer"
+    con.execute("UPDATE estado_libreview SET ultimo_ok=%s", (ahora - timedelta(minutes=5),))
+    assert AP.evaluar_bd(con, ahora)["motivo"] == "dosis_sin_leer"
+
+
+def test_sin_lecturas_tambien_cuenta_hasta_la_ultima_lectura():
+    # Última dosis de la pluma hace 14 h, pero LibreView se miró hace 10 h (4 h después): aún no avisa.
+    assert AP.evaluar(AHORA, h(14), [], ultima_lectura=h(10)) is None
+    assert AP.evaluar(AHORA, h(14), [], ultima_lectura=h(1))["motivo"] == "sin_lecturas"

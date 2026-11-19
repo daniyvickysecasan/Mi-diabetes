@@ -22,6 +22,18 @@ class Ajustes:
     intervalo_recoleccion_s: int = 300
     solape_incremental_min: int = 180     # relee las últimas 3 h por si LibreLinkUp rellena tarde
     hueco_min: int = 20                   # sin lecturas durante más de esto = hueco
+    # Token de un sujeto con rol "careportal" (puede crear tratamientos). Solo lo usa el
+    # recolector de la pluma para escribir sus dosis. Vacío = no escribe en Nightscout.
+    nightscout_token_escritura: str = ""
+
+    # LibreView (API no oficial). Credenciales solo en despliegue/.env del PC.
+    libreview_email: str = ""
+    libreview_password: str = ""
+    libreview_region: str = ""            # vacío = la que diga LibreView al entrar (p. ej. "eu")
+    libreview_version: str = "3.27.0.42"  # versión de la web de LibreView que se anuncia en las cabeceras
+    libreview_sesion: str = "/datos/libreview/sesion.json"  # token de dispositivo de confianza (volumen local)
+    intervalo_pluma_s: int = 5            # cada cuánto mira la base (lectura pedida, SMS, código)
+    solape_pluma_h: int = 48              # relee los dos últimos días: la pluma sube con retraso
 
     # Rangos (mg/dL), consenso internacional
     rango_bajo: int = 70
@@ -51,6 +63,14 @@ class Ajustes:
             intervalo_recoleccion_s=int(e("INTERVALO_RECOLECCION_S") or 300),
             solape_incremental_min=int(e("SOLAPE_INCREMENTAL_MIN") or 180),
             hueco_min=int(e("HUECO_MIN") or 20),
+            nightscout_token_escritura=e("NIGHTSCOUT_TOKEN_ESCRITURA") or "",
+            libreview_email=e("LIBREVIEW_EMAIL") or "",
+            libreview_password=e("LIBREVIEW_PASSWORD") or "",
+            libreview_region=(e("LIBREVIEW_REGION") or "").strip().lower(),
+            libreview_version=e("LIBREVIEW_VERSION") or "3.27.0.42",
+            libreview_sesion=e("LIBREVIEW_SESION") or "/datos/libreview/sesion.json",
+            intervalo_pluma_s=int(e("INTERVALO_PLUMA_S") or 5),
+            solape_pluma_h=int(e("SOLAPE_PLUMA_H") or 48),
             rango_bajo=int(e("RANGO_BAJO") or 70),
             rango_alto=int(e("RANGO_ALTO") or 180),
             zona_horaria=e("ZONA_HORARIA") or "Europe/Madrid",
