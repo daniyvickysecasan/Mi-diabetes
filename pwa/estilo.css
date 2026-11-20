@@ -121,3 +121,10 @@ select { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border:
 #s-estimacion .lista li { font-size: .85rem; }
 #s-estimacion .franja { margin-top: 10px; }
 #s-estimacion .franja button { width: 100%; }
+
+.lista.chat li { display: block; padding: 10px 0; text-align: left; }
+.chat .texto { font-weight: 600; }
+.chat .ev-detalle { font-size: .85rem; margin-top: 2px; }
+.chat .acciones { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.chat .acciones button, .chat .acciones select { width: auto; flex: 1 1 auto; padding: 8px 10px; font-size: .9rem; }
+form.tarjeta .chat .acciones button.primario { margin-top: 0; }

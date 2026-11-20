@@ -15,6 +15,7 @@ Variables de entorno:
   COMIDAS_MODELOS         lista separada por comas (por defecto, la de config.py)
   COMIDAS_RONDAS_MAX      rondas como máximo (por defecto 2: la segunda solo si hay discrepancias)
   COMIDAS_CONTEXTO        tokens de contexto por consulta (por defecto 8192)
+  CHAT_MODELO             modelo para el registro tipo chat (por defecto gemma3:27b)
   RUTA_FOTOS              carpeta de las fotos (volumen local)
   RUTA_ALIMENTOS_USDA     base USDA en SQLite generada con preparar_bd.py (opcional)
 """
@@ -32,6 +33,7 @@ import requests
 
 from comun.ajustes import Ajustes
 from comun.bd import conectar
+from servicios.comidas import chat
 
 _AQUI = Path(__file__).resolve().parent
 if str(_AQUI) not in sys.path:          # el prototipo importa `config` por su nombre
@@ -45,6 +47,7 @@ RUTA_FOTOS = Path(os.environ.get("RUTA_FOTOS", "/datos/fotos"))
 RONDAS_MAX = 2
 CONTEXTO = 8192          # tokens: foto de 1600 px + instrucciones caben de sobra. Con los 32 768 por
                          # defecto, qwen3-vl:32b llena los 32 GB de la GPU y se vuelve lentísimo.
+CHAT_MODELO = "gemma3:27b"
 MANTENER = "30m"         # tiempo que Ollama deja el modelo cargado tras una consulta
 
 
@@ -54,7 +57,8 @@ def configurar() -> None:
     C.OLLAMA_URL = (e("OLLAMA_URL") or C.OLLAMA_URL).rstrip("/")
     if e("COMIDAS_MODELOS"):
         C.MODELOS = C.MODELOS_TEXTO = [m.strip() for m in e("COMIDAS_MODELOS").split(",") if m.strip()]
-    global RONDAS_MAX
+    global RONDAS_MAX, CHAT_MODELO
+    CHAT_MODELO = e("CHAT_MODELO") or CHAT_MODELO
     global CONTEXTO
     if e("COMIDAS_CONTEXTO"):
         CONTEXTO = int(e("COMIDAS_CONTEXTO"))
@@ -90,6 +94,27 @@ def discrepan(corridas: list[dict]) -> bool:
     return max(hc) - min(hc) > max(C.ALERTA_ABS_G, C.ALERTA_REL * med)
 
 
+def fuente_foto(nota: str) -> str:
+    """Con descripción, manda la de Daniel para saber QUÉ hay; la foto, para CUÁNTO (19-11-2026)."""
+    nota = (nota or "").strip()
+    if not nota:
+        return N.FUENTE_FOTO.format(nota="")
+    return ("Analiza la foto del plato. Quien va a comer dice que es: «" + nota.replace("«", "").replace("»", "") + "».\n"
+            "Fíate de esa descripción para saber qué alimentos hay y llámalos así (aunque en la foto parezcan "
+            "otra cosa); usa la foto sobre todo para estimar las cantidades. Si la descripción da cantidades, úsalas.")
+
+
+def limpiar_alertas(alertas: list[str], tabla) -> list[str]:
+    """Sin base USDA, el aviso de "sin coincidencia" saldría en todos los platos: se cambia por uno
+    solo y claro."""
+    if getattr(tabla, "usda", None):
+        return alertas
+    otras = [a for a in alertas if not a.startswith("Sin coincidencia en la base")]
+    if len(otras) != len(alertas):
+        otras.append("Valores de los modelos: aún no hay base de alimentos USDA para contrastarlos.")
+    return otras
+
+
 def analizar_adaptativo(tabla, imagen: bytes | None = None, nota: str = "", texto: str | None = None,
                         progreso=log.info, consultar=None) -> dict:
     """Una consulta por modelo; si discrepan, otra ronda (como mucho RONDAS_MAX). La segunda ronda
@@ -97,7 +122,7 @@ def analizar_adaptativo(tabla, imagen: bytes | None = None, nota: str = "", text
     consultar = consultar or consultar_ollama
     if imagen is not None:
         b64 = base64.b64encode(imagen).decode()
-        prompt = N.INSTRUCCIONES.format(fuente=N.FUENTE_FOTO.format(nota=f"\nNota del usuario: {nota}" if nota else ""))
+        prompt = N.INSTRUCCIONES.format(fuente=fuente_foto(nota))
         modelos = list(C.MODELOS)
     else:
         b64 = None
@@ -118,6 +143,7 @@ def analizar_adaptativo(tabla, imagen: bytes | None = None, nota: str = "", text
     if not corridas:
         raise RuntimeError("Ningún modelo respondió:\n" + "\n".join(errores))
     r = N.consolidar(corridas, errores, origen="foto" if imagen is not None else "texto")
+    r["alertas"] = limpiar_alertas(r["alertas"], tabla)
     r["rondas"] = rondas
     if rondas > 1:
         r["alertas"].insert(0, f"Los modelos discrepaban: se repitió el análisis ({rondas} rondas).")
@@ -188,6 +214,11 @@ def vuelta(con, tabla, analizar_plato=None) -> dict | None:
     return analizar(con, c, tabla, analizar_plato) if c else None
 
 
+def vuelta_chat(con) -> dict | None:
+    return chat.vuelta(con, lambda texto: chat.consultar(C.OLLAMA_URL, CHAT_MODELO, texto, timeout=C.TIMEOUT),
+                       CHAT_MODELO)
+
+
 def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(prog="comidas")
@@ -198,19 +229,21 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     configurar()
     tabla = N.TablaAlimentos(C.RUTA_BD, C.RUTA_PROPIOS)
-    log.info("Modelos %s, hasta %s rondas, en %s; base USDA %s", C.MODELOS, RONDAS_MAX, C.OLLAMA_URL,
+    log.info("Modelos %s, hasta %s rondas, chat con %s, en %s; base USDA %s", C.MODELOS, RONDAS_MAX, CHAT_MODELO, C.OLLAMA_URL,
              "sí" if tabla.usda else "no (solo alimentos propios y estimación del modelo)")
     aj = Ajustes.desde_entorno()
     with conectar(aj.database_url, autocommit=True) as con:
         # Lo que quedó a medias si el trabajador se paró vuelve a la cola.
         con.execute("UPDATE comidas SET estado_analisis = 'pendiente' WHERE estado_analisis = 'analizando'")
+        con.execute("UPDATE eventos_chat SET estado_analisis = 'pendiente' WHERE estado_analisis = 'analizando'")
         if a.orden == "una":
             print(json.dumps(analizar(con, con.execute("SELECT * FROM comidas WHERE id = %s", (a.id,)).fetchone(), tabla),
                              ensure_ascii=False))
             return 0
         while True:
             try:
-                if vuelta(con, tabla) is None:
+                # Primero las comidas (esperan una dosis); el chat, después.
+                if vuelta(con, tabla) is None and vuelta_chat(con) is None:
                     time.sleep(INTERVALO_S)
             except Exception:
                 log.exception("Fallo en la vuelta")

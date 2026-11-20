@@ -86,6 +86,16 @@ services:
       - fotos-comidas:/datos/fotos:ro
       - alimentos:/datos/alimentos:ro
 
+  preparar-usda:          # una vez: docker compose --profile herramientas run --rm preparar-usda
+    <<: *app
+    profiles: ["herramientas"]
+    restart: "no"
+    command: ["python", "-m", "servicios.comidas.descargar_usda"]
+    environment:
+      RUTA_ALIMENTOS_USDA: /datos/alimentos/alimentos.sqlite
+    volumes:
+      - alimentos:/datos/alimentos
+
   api:
     <<: *app
     volumes:
@@ -123,5 +133,5 @@ services:
 volumes:
   datos_bd:
   sesion-libreview:
-  fotos-comidas:     # fotos de las comidas: datos de salud, solo en el PC (aún NO entran en la copia restic)
+  fotos-comidas:     # fotos de las comidas: datos de salud, solo en el PC (entran en la copia restic, restic/copia.ps1)
   alimentos:         # base USDA en SQLite (servicios/comidas/preparar_bd.py), opcional

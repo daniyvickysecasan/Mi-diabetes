@@ -32,7 +32,7 @@ class NuevaFoto(BaseModel):
     model_config = {"extra": "forbid"}
     id_cliente: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     imagen_b64: str = Field(min_length=100, max_length=MAX_FOTO * 4 // 3 + 16)
-    nota: str | None = Field(default=None, max_length=300)
+    nota: str | None = Field(default=None, max_length=1000)
     ts: datetime | None = None
     _zona = field_validator("ts")(_con_zona)
 
