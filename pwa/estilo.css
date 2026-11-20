@@ -139,4 +139,6 @@ button.grande { font-size: 1.15rem; padding: 16px; }
 .enlace-fila { width: 100%; text-align: left; background: none; color: var(--texto); padding: 14px 0; font-size: 1rem; }
 .enlace-fila::after { content: "›"; float: right; color: var(--suave); }
 .volver { margin: 4px 0 8px; }
+.casilla { display: flex; gap: 8px; align-items: flex-start; font-size: .85rem; margin-top: 10px; color: var(--suave); }
+.casilla input { width: auto; margin-top: 2px; }
 .caso.urgente { border-left: 4px solid var(--bajo); padding-left: 8px; }

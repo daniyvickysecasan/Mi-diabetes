@@ -1,4 +1,4 @@
--- 010: anomalías y avisos por ntfy (fase 4).
+-- 011: anomalías y avisos por ntfy (fase 4).
 -- El servicio de anomalías (servicios/anomalias) detecta episodios con reglas deterministas,
 -- los guarda aquí y los publica en el ntfy de casa. Daniel responde en la app y su respuesta queda
 -- como etiqueta. NADA de esta tabla entra en un cálculo de dosis (hay un test que lo comprueba).
