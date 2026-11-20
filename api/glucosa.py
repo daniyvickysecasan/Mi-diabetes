@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
 
+from api.anomalias import abiertas as anomalias_abiertas
 from api.deps import requiere_sesion
 from api.dosis import resumen_panel
 from comun import glucosa as G
@@ -55,5 +56,6 @@ def panel(request: Request, con=SESION):
             "error": ultima["error"] if ultima else None,
             "hueco_abierto": {"desde": huecos["inicio"].isoformat(), "minutos": huecos["minutos"]} if huecos else None,
         },
+        "anomalias_abiertas": anomalias_abiertas(con),
         **resumen_panel(con, hasta, aj.aviso_pluma_horas, aj.aviso_pluma_margen_min),
     }

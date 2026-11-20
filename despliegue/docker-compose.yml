@@ -96,6 +96,19 @@ services:
     volumes:
       - alimentos:/datos/alimentos
 
+  # Fase 4: detecta anomalías y avisa por ntfy (servicios/anomalias). Ver ntfy/README.md.
+  anomalias:
+    <<: *app
+    command: ["python", "-m", "servicios.anomalias", "servicio"]
+
+  ntfy:
+    image: binwiederhier/ntfy:v2.11.0
+    restart: unless-stopped
+    command: ["serve"]
+    volumes:
+      - ./ntfy/server.yml:/etc/ntfy/server.yml:ro
+      - ntfy-datos:/var/lib/ntfy       # usuarios, tokens y la caché de 24 h (no contiene secretos del repo)
+
   api:
     <<: *app
     volumes:
@@ -129,9 +142,11 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - api
+      - ntfy
 
 volumes:
   datos_bd:
   sesion-libreview:
   fotos-comidas:     # fotos de las comidas: datos de salud, solo en el PC (entran en la copia restic, restic/copia.ps1)
+  ntfy-datos:
   alimentos:         # base USDA en SQLite (servicios/comidas/preparar_bd.py), opcional
