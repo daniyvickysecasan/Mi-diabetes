@@ -122,6 +122,12 @@ Borrador del 18-11-2026, pendiente de aprobación. Si este plan y el traspaso di
 
 **Qué necesito de ti.** Instalar la app ntfy en el iPhone. Etiquetar unos cuantos episodios pasados.
 
+**Estado a 20-11-2026 (PR de la fase 4, pendiente de fusionar y desplegar).**
+- Hecho en código y tests: servicio `anomalias` con seis reglas (hueco, presión, subida sin comida, Fiasp sin comida, acumulación de insulina y posible olvido de Tresiba), ntfy autoalojado en Docker, pantalla «Avisos y preguntas» con respuestas como etiquetas, etiquetado de episodios pasados y `python -m servicios.anomalias evaluar` para el criterio de aceptación.
+- Umbrales aprobados por Daniel el 20-11-2026: acumulación si (insulina activa − hidratos sin absorber / ratio) × sensibilidad > glucosa − 70, con absorción lineal de 3 h (comida) y 1 h (hidratos de corrección), urgente y repetida como mucho cada 60 min; olvido de Tresiba tras 4 h con ≥ 90 % de lecturas > 180, sin bajar y sin comida, hidratos ni Fiasp desde 2 h antes, una vez al día. Las demás son preguntas no urgentes, en silencio de 23:00 a 08:00 y como mucho 6 al día.
+- Las anomalías no entran en ningún cálculo de dosis; el freno de la sugerencia no cambia.
+- Pendiente: desplegar (cuando vuelva Docker Desktop), configurar ntfy en el iPhone (`despliegue/ntfy/README.md`), etiquetar unos 20 episodios y pasar la evaluación.
+
 ---
 
 ## Fase 5 — Predicción y Garmin

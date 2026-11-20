@@ -20,7 +20,7 @@ from servicios.recoleccion.nightscout import ClienteNightscout
 
 URL_ADMIN = os.environ.get("TEST_DATABASE_URL")
 TOKEN = "token-lectura-prueba"
-TABLAS = ["decisiones", "sugerencias", "dosis", "eventos_chat", "comidas", "hidratos_correccion",
+TABLAS = ["anomalias", "episodios_etiquetados", "decisiones", "sugerencias", "dosis", "eventos_chat", "comidas", "hidratos_correccion",
           "config_tresiba", "versiones_parametros", "glucosa", "tratamientos_nightscout",
           "ejecuciones_recoleccion", "huecos", "llegadas_pluma", "envios_nightscout", "horas_pluma_libreview", "solicitudes_lectura_pluma", "cambios_pluma_libreview", "sesiones", "retos_webauthn", "credenciales_passkey"]
 
@@ -47,6 +47,7 @@ def con(url_bd):
         # Fila única: se reinicia en vez de borrarse.
         c.execute("""UPDATE estado_libreview SET estado='sin_iniciar', codigo=NULL, destino_sms=NULL,
                      cambiado_en=now(), ultimo_ok=NULL, ultima_sincronizacion=NULL, error=NULL""")
+        c.execute("UPDATE estado_anomalias SET ultimo_ciclo=NULL, ultimo_error=NULL, ntfy_ok=NULL, ntfy_error=NULL")
         yield c
 
 

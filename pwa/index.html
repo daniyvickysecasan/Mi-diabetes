@@ -61,6 +61,7 @@
         <button class="secundario" data-ir="registrar" data-foco="hc-gramos">+ Hidratos</button>
       </div>
 
+      <a id="aviso-anomalias" class="aviso enlace-bloque oculto" href="#avisos" data-ir="avisos"></a>
       <div id="aviso-pluma" class="aviso aviso-pluma oculto" role="status"></div>
 
       <p class="lv-actualizar"><button id="lv-actualizar" class="enlace" type="button">Actualizar dosis de la pluma</button>
@@ -223,6 +224,7 @@
         <h2>Más</h2>
         <ul class="lista menu">
           <li><button class="enlace-fila" data-ir="revisar">Dosis por revisar <span id="badge-menu" class="badge oculto"></span></button></li>
+          <li><button class="enlace-fila" data-ir="avisos">Avisos y preguntas <span id="badge-avisos" class="badge oculto"></span></button></li>
           <li><button class="enlace-fila" data-ir="tresiba">Tresiba: dosis y franja horaria</button></li>
         </ul>
       </section>
@@ -273,6 +275,42 @@
         <p class="suave pequeno">Mientras no decidas, cada dosis dudosa cuenta en la insulina activa (lo más prudente).</p>
         <ul id="revisar-lista" class="lista"></ul>
       </section>
+    </div>
+
+    <!-- ============================================================ avisos (fase 4) -->
+    <div id="v-avisos" class="vista oculto">
+      <button class="enlace volver" data-ir="mas">‹ Más</button>
+      <section class="tarjeta">
+        <h2>Preguntas pendientes</h2>
+        <p class="suave pequeno">Tus respuestas quedan como etiquetas para aprender. No cambian ningún cálculo de dosis.</p>
+        <ul id="av-lista" class="lista" aria-live="polite"></ul>
+      </section>
+      <section class="tarjeta">
+        <h2>Respondidas (7 días)</h2>
+        <ul id="av-recientes" class="lista"></ul>
+        <p id="av-estado" class="suave pequeno"></p>
+      </section>
+      <form id="f-episodio" class="tarjeta" autocomplete="off">
+        <h2>Etiquetar un episodio pasado</h2>
+        <p class="suave pequeno">Para medir si los avisos aciertan: marca a mano episodios de tu histórico.</p>
+        <label for="ep-tipo">Qué pasó</label>
+        <select id="ep-tipo">
+          <option value="presion">Bajada por presión sobre el sensor</option>
+          <option value="subida_sin_comida">Subida sin comida</option>
+          <option value="dosis_sin_comida">Fiasp sin comida</option>
+          <option value="olvido_tresiba">Olvido de Tresiba</option>
+          <option value="hueco">Hueco de datos</option>
+          <option value="acumulacion">Acumulación de insulina</option>
+        </select>
+        <div class="franja">
+          <div><label for="ep-inicio">Desde</label><input id="ep-inicio" type="datetime-local" required></div>
+          <div><label for="ep-fin">Hasta</label><input id="ep-fin" type="datetime-local" required></div>
+        </div>
+        <label for="ep-notas">Notas (opcional)</label>
+        <input id="ep-notas" type="text" maxlength="500">
+        <button class="primario" type="submit">Guardar episodio</button>
+        <ul id="ep-lista" class="lista"></ul>
+      </form>
     </div>
 
     <p id="msg" class="toast oculto" role="status"></p>

@@ -141,3 +141,4 @@ button.grande { font-size: 1.15rem; padding: 16px; }
 .volver { margin: 4px 0 8px; }
 .casilla { display: flex; gap: 8px; align-items: flex-start; font-size: .85rem; margin-top: 10px; color: var(--suave); }
 .casilla input { width: auto; margin-top: 2px; }
+.caso.urgente { border-left: 4px solid var(--bajo); padding-left: 8px; }

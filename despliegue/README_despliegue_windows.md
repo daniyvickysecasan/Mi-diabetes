@@ -150,6 +150,12 @@ Es una API no oficial: si LibreView la cambia, el panel lo avisa y siguen valien
 Si en una misma hora te pinchas dos veces, LibreView solo da la suma de esa hora: esas dosis no se
 reparten a ojo y se quedan esperando a la app o al CSV.
 
+## Avisos por ntfy (fase 4)
+
+Los contenedores `ntfy` y `anomalias` arrancan con el resto. Para que los avisos lleguen al iPhone,
+sigue `ntfy/README.md` (tema, usuarios, token, ruta de Cloudflare con *Bypass* y la app ntfy). Sin
+`NTFY_TEMA` las preguntas se ven solo en la app (Más → Avisos y preguntas).
+
 ## Probar sin datos reales
 
 ```powershell

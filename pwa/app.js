@@ -319,7 +319,8 @@ function pintarFase2(p) {
   const r = $("aviso-revisar");
   r.classList.toggle("oculto", !p.por_revisar);
   r.textContent = p.por_revisar ? `${p.por_revisar} dosis por revisar →` : "";
-  for (const b of [$("badge"), $("badge-menu")]) { b.classList.toggle("oculto", !p.por_revisar); b.textContent = p.por_revisar || ""; }
+  const b2 = $("badge-menu"); b2.classList.toggle("oculto", !p.por_revisar); b2.textContent = p.por_revisar || "";
+  pintarAnomalias(p.anomalias_abiertas || 0, p.por_revisar || 0);
   const m = p.metricas_14d, dl = $("metricas");
   dl.replaceChildren();
   const filas = [
@@ -439,7 +440,7 @@ async function cargarRevisar() {
   const ul = $("revisar-lista");
   try {
     const { dosis } = await pedir("/api/dosis/revisar");
-    if (!dosis.length) { ul.replaceChildren(li("Nada que revisar", "suave")); for (const b of [$("badge"), $("badge-menu")]) b.classList.add("oculto"); return; }
+    if (!dosis.length) { ul.replaceChildren(li("Nada que revisar", "suave")); $("badge-menu").classList.add("oculto"); return; }
     ul.replaceChildren(...dosis.map((d) => {
       const e = document.createElement("li");
       e.className = "caso";
@@ -465,6 +466,85 @@ async function cargarRevisar() {
     if (e.estado === 401) return mostrar("entrada");
     ul.replaceChildren(li("Sin conexión con el servidor", "suave"));
   }
+}
+
+// ------------------------------------------------------------------ avisos (fase 4)
+// Lo que pregunta el servicio de anomalías (también llega por ntfy). Las respuestas son etiquetas.
+const TIPO_AVISO = { hueco: "Hueco de datos", presion: "Bajada por presión", subida_sin_comida: "Subida sin comida",
+  dosis_sin_comida: "Fiasp sin comida", acumulacion: "Acumulación de insulina", olvido_tresiba: "Olvido de Tresiba" };
+
+function pintarAnomalias(n, porRevisar) {
+  const a = $("aviso-anomalias");
+  a.classList.toggle("oculto", !n);
+  a.textContent = n ? `${n === 1 ? "1 pregunta pendiente" : `${n} preguntas pendientes`} →` : "";
+  const b = $("badge-avisos"); b.classList.toggle("oculto", !n); b.textContent = n || "";
+  const t = $("badge"); t.classList.toggle("oculto", !(n + porRevisar)); t.textContent = (n + porRevisar) || "";
+}
+
+async function accionAviso(ruta, cuerpo = {}) {
+  try {
+    await pedir(ruta, cuerpo);
+    aviso("Apuntado");
+    cargarAvisos();
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(e.estado ? e.message : "Sin conexión: responder necesita conexión", true);
+  }
+}
+
+function itemAviso(a) {
+  const e = nodo("li", "caso" + (a.urgente && a.estado === "abierta" ? " urgente" : ""));
+  e.append(nodo("div", "fuerte", a.titulo), nodo("div", "", a.texto),
+    nodo("div", "suave pequeno", `${TIPO_AVISO[a.tipo] || a.tipo} · ${fechaHora(a.detectada_en)}`));
+  if (a.estado === "abierta") {
+    e.append(nodo("div", "fuerte pequeno", a.pregunta));
+    const acc = nodo("div", "acciones");
+    for (const o of a.opciones) {
+      const b = nodo("button", "", o.texto); b.type = "button";
+      b.addEventListener("click", () => accionAviso(`/api/anomalias/${a.id}/respuesta`, { respuesta: o.clave }));
+      acc.append(b);
+    }
+    const d = nodo("button", "enlace", "Descartar"); d.type = "button";
+    d.addEventListener("click", () => accionAviso(`/api/anomalias/${a.id}/descartar`));
+    acc.append(d);
+    e.append(acc);
+  } else {
+    const o = a.opciones.find((x) => x.clave === a.respuesta);
+    e.append(nodo("div", "suave pequeno", a.estado === "descartada" ? "Descartada" : `Respuesta: ${o ? o.texto : a.respuesta}`));
+  }
+  return e;
+}
+
+async function cargarAvisos() {
+  for (const id of ["ep-inicio", "ep-fin"]) if (!$(id).value) $(id).value = valorLocal();
+  try {
+    const [r, ep] = await Promise.all([pedir("/api/anomalias"), pedir("/api/episodios")]);
+    $("av-lista").replaceChildren(...(r.abiertas.length ? r.abiertas.map(itemAviso) : [li("Nada pendiente", "suave")]));
+    $("av-recientes").replaceChildren(...(r.recientes.length ? r.recientes.map(itemAviso) : [li("Nada todavía", "suave")]));
+    const s = r.servicio || {};
+    $("av-estado").textContent = (s.ultimo_ciclo ? `Comprobado a las ${hora(s.ultimo_ciclo)}` : "El servicio de avisos aún no ha comprobado nada") +
+      (s.ultimo_error ? ` · error: ${s.ultimo_error}` : "") + (s.ntfy_error ? ` · ntfy: ${s.ntfy_error}` : s.ntfy_ok ? ` · último aviso enviado a las ${hora(s.ntfy_ok)}` : "");
+    pintarAnomalias(r.abiertas.length, 0);
+    $("ep-lista").replaceChildren(...ep.episodios.map((x) => {
+      const e = li(`${TIPO_AVISO[x.tipo]}: ${fechaHora(x.inicio)} – ${fechaHora(x.fin)}${x.notas ? ` · ${x.notas}` : ""} `);
+      const b = nodo("button", "enlace", "Borrar"); b.type = "button";
+      b.addEventListener("click", () => accionAviso(`/api/episodios/${x.id}/borrar`));
+      e.append(b);
+      return e;
+    }));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    $("av-lista").replaceChildren(li("Sin conexión con el servidor", "suave"));
+  }
+}
+
+function enviarEpisodio(ev) {
+  ev.preventDefault();
+  if (!$("ep-inicio").value || !$("ep-fin").value) return aviso("Faltan las horas", true);
+  const cuerpo = { tipo: $("ep-tipo").value, inicio: desdeLocal($("ep-inicio").value), fin: desdeLocal($("ep-fin").value) };
+  if ($("ep-notas").value.trim()) cuerpo.notas = $("ep-notas").value.trim();
+  $("ep-notas").value = "";
+  accionAviso("/api/episodios", cuerpo);
 }
 
 // ------------------------------------------------------------------ dosis (fase 3)
@@ -854,8 +934,8 @@ async function enviarChat(ev) {
 // ------------------------------------------------------------------ navegación
 let temporizador, vista = "panel";
 const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: () => { cargarRegistrar(); cargarChat(); },
-  mas: () => {}, tresiba: cargarTresiba, revisar: cargarRevisar };
-const PESTANA = { tresiba: "mas", revisar: "mas" };      // subpantallas de "Más"
+  mas: () => {}, tresiba: cargarTresiba, revisar: cargarRevisar, avisos: cargarAvisos };
+const PESTANA = { tresiba: "mas", revisar: "mas", avisos: "mas" };      // subpantallas de "Más"
 const refrescarVista = () => CARGAS[vista]();
 
 function ir(cual, foco) {
@@ -880,6 +960,7 @@ function mostrar(cual) {
 
 async function iniciar() {
   pintarCola();
+  if (location.hash === "#avisos") vista = "avisos";      // al tocar un aviso de ntfy
   try {
     const e = await pedir("/auth/estado");
     if (e.autenticado) return mostrar("panel");
@@ -909,6 +990,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("f-chat").addEventListener("submit", enviarChat);
   $("f-hc").addEventListener("submit", enviarHidratos);
   $("f-tresiba").addEventListener("submit", enviarTresiba);
+  $("f-episodio").addEventListener("submit", enviarEpisodio);
   $("f-sug").addEventListener("submit", calcularDosis);
   $("s-foto-btn").addEventListener("click", () => $("s-foto").click());
   $("s-foto").addEventListener("change", async () => {

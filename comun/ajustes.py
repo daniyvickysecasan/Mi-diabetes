@@ -48,6 +48,13 @@ class Ajustes:
     aviso_pluma_horas: float = 12.0       # sin dosis de la pluma durante más de esto = avisar
     aviso_pluma_margen_min: int = 45      # dosis apuntada en la app sin llegar de la pluma tras esto = avisar
 
+    # Anomalías y avisos por ntfy (fase 4, servicios/anomalias). Umbrales: ANOMALIA_* en el .env.
+    intervalo_anomalias_s: int = 300
+    ntfy_url: str = ""                    # servidor ntfy de casa visto desde Docker (http://ntfy:80); vacío = no envía
+    ntfy_tema: str = ""                   # tema largo y aleatorio (secreto, solo en .env)
+    ntfy_token: str = ""                  # token de ntfy con permiso de escritura en el tema (secreto)
+    url_app: str = ""                     # se abre al tocar el aviso (https://midiabetes.intelligentcontrol.net)
+
     # Passkey / sesión
     rp_id: str = "localhost"
     rp_nombre: str = "Mi Diabetes"
@@ -82,6 +89,11 @@ class Ajustes:
             zona_horaria=e("ZONA_HORARIA") or "Europe/Madrid",
             aviso_pluma_horas=float(e("AVISO_PLUMA_HORAS") or 12),
             aviso_pluma_margen_min=int(e("AVISO_PLUMA_MARGEN_MIN") or 45),
+            intervalo_anomalias_s=int(e("INTERVALO_ANOMALIAS_S") or 300),
+            ntfy_url=(e("NTFY_URL") or "").rstrip("/"),
+            ntfy_tema=e("NTFY_TEMA") or "",
+            ntfy_token=e("NTFY_TOKEN") or "",
+            url_app=(e("URL_APP") or "").rstrip("/"),
             rp_id=e("RP_ID") or "localhost",
             rp_nombre=e("RP_NOMBRE") or "Mi Diabetes",
             origenes=origenes,

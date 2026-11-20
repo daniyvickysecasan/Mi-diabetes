@@ -1,0 +1,17 @@
+# ntfy de casa (fase 4). Se monta en el contenedor `ntfy` de docker-compose.yml.
+# Sin datos ni secretos: usuarios y tokens viven en el volumen ntfy-datos (user.db).
+base-url: "https://ntfy.intelligentcontrol.net"
+listen-http: ":80"
+behind-proxy: true                      # detrás de Cloudflare Tunnel
+cache-file: "/var/lib/ntfy/cache.db"
+cache-duration: "24h"
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"         # nadie lee ni escribe sin usuario o token
+enable-signup: false
+enable-login: true
+web-root: "disable"                     # sin web: solo la app del iPhone y el servicio de anomalías
+# iPhone: iOS solo despierta la app ntfy con una notificación de Apple, y eso solo lo puede pedir
+# ntfy.sh. Con esta línea tu servidor manda a ntfy.sh SOLO un identificador del mensaje (sin título
+# ni texto); el iPhone descarga el aviso de tu servidor. Sin ella, nada sale a terceros pero los
+# avisos llegan tarde (cuando abres la app). Daniel eligió el relevo el 20-11-2026.
+upstream-base-url: "https://ntfy.sh"
