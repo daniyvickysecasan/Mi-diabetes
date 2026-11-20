@@ -750,12 +750,15 @@ function pintarEstimacion(c) {
     $("s-hc").focus();
   });
   fila.append(ok, corr);
-  d.append(fila, nodo("p", "suave pequeno", "Son estimaciones de los modelos: compruébalas antes de confirmar."));
+  const ref = nodo("label", "casilla");
+  const caja = document.createElement("input"); caja.type = "checkbox"; caja.id = "s-ref";
+  ref.append(caja, document.createTextNode(" La he pesado o tiene etiqueta (sirve para medir el error de los modelos)"));
+  d.append(fila, ref, nodo("p", "suave pequeno", "Son estimaciones de los modelos: compruébalas antes de confirmar."));
 }
 
 async function confirmarComida(cambios) {
   try {
-    const c = await pedir(`/api/comidas/${comidaActual.id}/revisar`, cambios);
+    const c = await pedir(`/api/comidas/${comidaActual.id}/revisar`, { ...cambios, referencia: !!$("s-ref")?.checked });
     const id = c.id;
     comidaActual = null;
     $("s-estimacion").classList.add("oculto");
