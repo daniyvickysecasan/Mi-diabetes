@@ -48,11 +48,17 @@
 
       <a id="aviso-segunda" class="aviso aviso-pluma enlace-bloque oculto" href="#dosis" data-ir="dosis"></a>
 
+      <section class="tarjeta objetivo">
+        <h2>Llegar al objetivo sin comer</h2>
+        <button class="primario grande" id="btn-correccion" type="button">¿Cuánto me pongo ahora?</button>
+        <p class="suave pequeno">Corrección con tu glucosa y tu insulina activa. Lee la pluma antes de calcular.</p>
+        <div id="h-inicio"></div>
+      </section>
+
       <div class="rapidos">
-        <button class="primario" data-ir="dosis" data-foco="s-hc">Calcular dosis</button>
+        <button class="primario" data-ir="dosis">🍽 Voy a comer</button>
         <button class="secundario" data-ir="registrar" data-foco="u-fiasp">+ Fiasp</button>
-        <button class="secundario" id="btn-correccion" type="button">¿Cuánto me pongo ahora?</button>
-        <button class="secundario" data-ir="registrar" data-foco="hc-gramos">+ Hidratos de corrección</button>
+        <button class="secundario" data-ir="registrar" data-foco="hc-gramos">+ Hidratos</button>
       </div>
 
       <div id="aviso-pluma" class="aviso aviso-pluma oculto" role="status"></div>
@@ -95,14 +101,13 @@
 
       <footer class="pie suave">
         <span id="recoleccion"></span>
-        <button id="btn-salir" class="enlace">Salir</button>
       </footer>
     </div>
 
     <!-- ============================================================ dosis (fase 3) -->
     <div id="v-dosis" class="vista oculto">
       <section class="tarjeta">
-        <h2>Comida por foto</h2>
+        <h2>¿Qué vas a comer?</h2>
         <input id="s-foto" type="file" accept="image/*" capture="environment" class="oculto">
         <label for="s-texto">Qué es (opcional, ayuda mucho a la foto)</label>
         <input id="s-texto" type="text" maxlength="1000" placeholder="«steak tartar con pan tostado»" aria-label="Descripción de la comida">
@@ -115,11 +120,7 @@
       </section>
 
       <form id="f-sug" class="tarjeta" autocomplete="off">
-        <h2>Calcular dosis de Fiasp</h2>
-        <div class="chips" role="group" aria-label="Tipo">
-          <button type="button" data-tipo="comida" class="activo">Comida</button>
-          <button type="button" data-tipo="correccion">Solo corrección</button>
-        </div>
+        <h2>O escribe tú los hidratos</h2>
         <div id="s-comida">
           <label for="s-hc">Hidratos (g)</label>
           <input id="s-hc" type="text" inputmode="decimal" placeholder="40">
@@ -133,17 +134,23 @@
           </div>
         </div>
         <button class="primario" type="submit" id="s-calcular">Leer la pluma y calcular</button>
-        <p id="s-estado" class="suave pequeno" role="status"></p>
-        <div id="s-confirmar" class="confirmar oculto" role="alertdialog" aria-labelledby="s-pregunta">
-          <p id="s-pregunta" class="fuerte"></p>
-          <div class="franja">
-            <button id="s-no" type="button" class="primario">No, calcular</button>
-            <button id="s-si" type="button" class="secundario">Sí, apuntarla</button>
-          </div>
-        </div>
       </form>
 
-      <section id="s-resultado" class="tarjeta oculto" aria-live="polite"></section>
+      <div id="h-comer">
+        <!-- El cálculo (lectura de la pluma, pregunta y resultado) se muestra donde se pidió:
+             aquí o en Inicio. app.js mueve este bloque. -->
+        <div id="flujo">
+          <p id="s-estado" class="suave pequeno" role="status"></p>
+          <div id="s-confirmar" class="tarjeta confirmar oculto" role="alertdialog" aria-labelledby="s-pregunta">
+            <p id="s-pregunta" class="fuerte"></p>
+            <div class="franja">
+              <button id="s-no" type="button" class="primario">No, calcular</button>
+              <button id="s-si" type="button" class="secundario">Sí, apuntarla</button>
+            </div>
+          </div>
+          <section id="s-resultado" class="tarjeta oculto" aria-live="polite"></section>
+        </div>
+      </div>
 
       <section class="tarjeta">
         <h2>Últimas sugerencias</h2>
@@ -210,8 +217,29 @@
       </section>
     </div>
 
+    <!-- ============================================================ más -->
+    <div id="v-mas" class="vista oculto">
+      <section class="tarjeta">
+        <h2>Más</h2>
+        <ul class="lista menu">
+          <li><button class="enlace-fila" data-ir="revisar">Dosis por revisar <span id="badge-menu" class="badge oculto"></span></button></li>
+          <li><button class="enlace-fila" data-ir="tresiba">Tresiba: dosis y franja horaria</button></li>
+        </ul>
+      </section>
+      <section class="tarjeta">
+        <h2>Cómo calcula</h2>
+        <p class="suave pequeno">Cada cifra de insulina sale de un cálculo fijo con tus parámetros aprobados, nunca de un modelo de lenguaje.
+          Los modelos de tu PC solo estiman nutrientes y ordenan lo que apuntas; tú lo revisas siempre.</p>
+      </section>
+      <footer class="pie suave">
+        <span>Mi Diabetes</span>
+        <button id="btn-salir" class="enlace">Salir</button>
+      </footer>
+    </div>
+
     <!-- ============================================================ Tresiba -->
     <div id="v-tresiba" class="vista oculto">
+      <button class="enlace volver" data-ir="mas">‹ Más</button>
       <section class="tarjeta">
         <h2>Tresiba</h2>
         <p id="tr-vigente" class="iob-texto"></p>
@@ -239,6 +267,7 @@
 
     <!-- ============================================================ revisar -->
     <div id="v-revisar" class="vista oculto">
+      <button class="enlace volver" data-ir="mas">‹ Más</button>
       <section class="tarjeta">
         <h2>Dosis por revisar</h2>
         <p class="suave pequeno">Mientras no decidas, cada dosis dudosa cuenta en la insulina activa (lo más prudente).</p>
@@ -249,11 +278,10 @@
     <p id="msg" class="toast oculto" role="status"></p>
 
     <nav class="nav" aria-label="Secciones">
-      <button data-ir="panel" class="activo">Panel</button>
-      <button data-ir="dosis">Dosis</button>
-      <button data-ir="registrar">Registrar</button>
-      <button data-ir="tresiba">Tresiba</button>
-      <button data-ir="revisar">Revisar <span id="badge" class="badge oculto"></span></button>
+      <button data-ir="panel" class="activo">Inicio</button>
+      <button data-ir="dosis">Comer</button>
+      <button data-ir="registrar">Apuntar</button>
+      <button data-ir="mas">Más <span id="badge" class="badge oculto"></span></button>
     </nav>
   </main>
 </body>
