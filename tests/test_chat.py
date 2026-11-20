@@ -35,6 +35,25 @@ def test_ejercicio_en_el_futuro_con_duracion():
     assert d["etiquetas"] == ["ejercicio"] and d["incertidumbre"] == "baja"
 
 
+@pytest.mark.parametrize("texto, dicho, hace", [
+    ("he comido una paella hace una hora", -60, 60),              # el fallo real de gemma3:27b
+    ("hace 20 minutos me he comido una manzana", -20, 20),
+    ("he comido una paella hace una hora", 60, 60),
+    ("voy al gimnasio en media hora", 30, -30),
+    ("dentro de 2 horas salgo a correr", 120, -120),
+    ("me estoy tomando una cerveza", -15, -15),                   # sin pista: se respeta al modelo
+    ("hace un rato, y en media hora vuelvo", -30, -30),            # ambigua: se respeta al modelo
+])
+def test_el_signo_del_tiempo_lo_pone_la_frase(texto, dicho, hace):
+    d = CH.normalizar(resp(empieza_hace_min=dicho), T0, texto)
+    assert d["ts_evento_inicio"] == T0 - timedelta(minutes=hace)
+
+
+def test_futuro_demasiado_lejano_se_descarta_tras_corregir_el_signo():
+    d = CH.normalizar(resp(empieza_hace_min=20 * 60), T0, "en 20 horas me voy de viaje")
+    assert d["ts_evento_inicio"] is None
+
+
 @pytest.mark.parametrize("cambios, esperado", [
     ({"tipo": "inventado"}, {"tipo": "otro"}),
     ({"empieza_hace_min": 99999}, {"ts_evento_inicio": None}),

@@ -9,6 +9,7 @@ queda solo como etiqueta.
 """
 import json
 import logging
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -44,8 +45,9 @@ en UN evento. Responde solo con el JSON pedido. No des consejos ni cifras de ins
 
 Campos:
 - tipo: comida, bebida (sin alcohol), alcohol, ejercicio, enfermedad, estres, sueno u otro.
-- empieza_hace_min: minutos desde que empezó hasta ahora. 0 si es ahora; negativo si es en el futuro
-  ("en media hora" = -30); null si no se puede saber.
+- empieza_hace_min: minutos desde que empezó hasta ahora. 0 si es ahora; POSITIVO si ya pasó
+  ("hace una hora" = 60, "hace 20 minutos" = 20); negativo si es en el futuro ("en media hora" = -30);
+  null si no se puede saber.
 - dura_min: duración en minutos si se dice o se deduce con sentido; si no, null.
 - hidratos_min_g / hidratos_max_g: solo para comida, bebida o alcohol: un rango amplio y honesto de
   hidratos. null si no aplica.
@@ -78,10 +80,31 @@ def _num(x, lo: float, hi: float) -> float | None:
     return v if lo <= v <= hi else None
 
 
-def normalizar(resp: dict, ts_mensaje: datetime) -> dict:
-    """Valida la respuesta del modelo y calcula las horas. Lo que no cuadra se deja vacío."""
+_PASADO = re.compile(r"\bhace\b", re.I)
+_FUTURO = re.compile(r"\b(en|dentro de)\s+(\d+|un|una|media|dos|tres|cuatro|cinco|diez|quince|veinte|treinta)\b"
+                     r"[^.,;]*?\b(min|minuto|minutos|hora|horas)\b", re.I)
+
+
+def sentido(texto: str | None) -> str | None:
+    """'pasado' o 'futuro' si la frase lo dice sin ambigüedad ("hace una hora", "en media hora")."""
+    if not texto:
+        return None
+    pasado, futuro = bool(_PASADO.search(texto)), bool(_FUTURO.search(texto))
+    return "pasado" if pasado and not futuro else "futuro" if futuro and not pasado else None
+
+
+def normalizar(resp: dict, ts_mensaje: datetime, texto: str | None = None) -> dict:
+    """Valida la respuesta del modelo y calcula las horas. Lo que no cuadra se deja vacío.
+
+    Si la frase dice claramente pasado o futuro, el signo lo pone este código, no el modelo
+    (gemma3 daba "hace una hora" = -60)."""
     tipo = resp.get("tipo") if resp.get("tipo") in TIPOS else "otro"
-    hace = _num(resp.get("empieza_hace_min"), -MAX_FUTURO_MIN, MAX_PASADO_MIN)
+    hace = _num(resp.get("empieza_hace_min"), -MAX_PASADO_MIN, MAX_PASADO_MIN)
+    if hace is not None:
+        s = sentido(texto)
+        hace = abs(hace) if s == "pasado" else -abs(hace) if s == "futuro" else hace
+        if not -MAX_FUTURO_MIN <= hace <= MAX_PASADO_MIN:
+            hace = None
     dura = _num(resp.get("dura_min"), 0, MAX_DURACION_MIN)
     inicio = ts_mensaje - timedelta(minutes=round(hace)) if hace is not None else None
     fin = inicio + timedelta(minutes=round(dura)) if inicio is not None and dura is not None else None
@@ -120,7 +143,7 @@ def tomar(con) -> dict | None:
 def interpretar(con, ev: dict, consultar_modelo, modelo: str) -> dict:
     """`consultar_modelo(texto) -> dict` (la respuesta en bruto del modelo)."""
     try:
-        d = normalizar(consultar_modelo(ev["texto"]), ev["ts_mensaje"])
+        d = normalizar(consultar_modelo(ev["texto"]), ev["ts_mensaje"], ev["texto"])
     except Exception as e:
         log.warning("Chat %s: %s", ev["id"], e)
         con.execute("""UPDATE eventos_chat SET estado_analisis = 'error', error_analisis = %s, analizado_en = %s
