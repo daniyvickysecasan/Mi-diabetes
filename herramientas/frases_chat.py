@@ -45,7 +45,7 @@ def main(argv=None) -> int:
     bien = 0
     for frase, tipo, margen in FRASES:
         try:
-            d = CH.normalizar(CH.consultar(a.url, a.modelo, frase), ahora)
+            d = CH.normalizar(CH.consultar(a.url, a.modelo, frase), ahora, frase)
         except Exception as e:
             print(f"ERROR  {frase!r}: {e}")
             continue
