@@ -28,10 +28,12 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 
 from comun.ajustes import Ajustes
+from comun import platos as P
 from comun.bd import conectar
 from servicios.comidas import chat
 
@@ -167,6 +169,43 @@ def resumen(r: dict) -> dict:
             "alertas": r["alertas"]}
 
 
+def _fecha(ts) -> str:
+    return ts.astimezone(ZoneInfo("Europe/Madrid")).strftime("%d-%m")
+
+
+def datos_plato(plato: dict) -> dict:
+    """Comida por texto que coincide con un plato guardado: su valor, sin preguntar a los modelos."""
+    hc = float(plato["hidratos_g"])
+    num = lambda v: float(v) if v is not None else None  # noqa: E731
+    pesado = " (pesado)" if plato["referencia"] else ""
+    return {"hidratos_g": hc, "fibra_g": None, "azucares_g": None, "grasa_g": num(plato["grasa_g"]),
+            "proteina_g": num(plato["proteina_g"]), "kcal": None, "hidratos_bolo_g": hc, "hidratos_modelo_g": None,
+            "rango_hidratos_min_g": hc, "rango_hidratos_max_g": hc,
+            "items": [{"nombre": plato["nombre"], "gramos": None, "hidratos": hc, "fuente": "tu plato"}],
+            "estimaciones": {"plato_id": plato["id"]}, "plato_id": plato["id"],
+            "alertas": [f"Como la última vez ({_fecha(plato['actualizado_en'])}): {hc:.0f} g de tu plato "
+                        f"«{plato['nombre']}»{pesado}. Si la ración es distinta, corrige los gramos."]}
+
+
+def con_plato(datos: dict, plato: dict) -> dict:
+    """Foto que coincide con un plato guardado: manda el plato; lo de los modelos queda como
+    comprobación de la ración (y para medir su error)."""
+    hc, mod = float(plato["hidratos_g"]), datos["hidratos_bolo_g"]
+    pesado = " (pesado)" if plato["referencia"] else ""
+    aviso = (f"Como la última vez ({_fecha(plato['actualizado_en'])}): {hc:.0f} g de tu plato "
+             f"«{plato['nombre']}»{pesado}. Los modelos ven {mod:.0f} g.")
+    if abs(hc - mod) > max(10.0, 0.2 * hc):
+        aviso += " ¿La ración es distinta? Si es así, corrige los gramos."
+    return datos | {
+        "hidratos_bolo_g": hc, "hidratos_modelo_g": mod, "plato_id": plato["id"],
+        "grasa_g": float(plato["grasa_g"]) if plato["grasa_g"] is not None else datos["grasa_g"],
+        "proteina_g": float(plato["proteina_g"]) if plato["proteina_g"] is not None else datos["proteina_g"],
+        "rango_hidratos_min_g": round(min(hc, datos["rango_hidratos_min_g"]), 1),
+        "rango_hidratos_max_g": round(max(hc, datos["rango_hidratos_max_g"]), 1),
+        "estimaciones": datos["estimaciones"] | {"plato_id": plato["id"]},
+        "alertas": [aviso, *datos["alertas"]]}
+
+
 def tomar(con) -> dict | None:
     """Reserva la comida pendiente más antigua (seguro aunque haya dos trabajadores)."""
     with con.transaction():
@@ -181,12 +220,20 @@ def analizar(con, comida: dict, tabla, analizar_plato=None) -> dict:
     analizar_plato = analizar_plato or analizar_adaptativo
     inicio = time.monotonic()
     try:
+        plato = P.elegir(comida["descripcion"], P.todos(con)) if comida["descripcion"] else None
         if comida["origen"] == "foto":
             imagen = (RUTA_FOTOS / comida["foto_ruta"]).read_bytes()
             r = analizar_plato(tabla, imagen=imagen, nota=comida["descripcion"] or "", progreso=log.info)
+            datos = resumen(r) | {"hidratos_modelo_g": None, "plato_id": None}
+            datos["hidratos_modelo_g"] = datos["hidratos_bolo_g"]
+            if plato:
+                datos = con_plato(datos, plato)
+        elif plato:
+            datos = datos_plato(plato)
         else:
             r = analizar_plato(tabla, texto=comida["descripcion"], progreso=log.info)
-        datos = resumen(r)
+            datos = resumen(r) | {"plato_id": None}
+            datos["hidratos_modelo_g"] = datos["hidratos_bolo_g"]
         datos["estimaciones"]["segundos"] = round(time.monotonic() - inicio, 1)
     except Exception as e:
         log.warning("Comida %s: %s", comida["id"], e)
@@ -198,7 +245,8 @@ def analizar(con, comida: dict, tabla, analizar_plato=None) -> dict:
         con.execute(
             """UPDATE comidas SET hidratos_g = %(hidratos_g)s, fibra_g = %(fibra_g)s, azucares_g = %(azucares_g)s,
                  grasa_g = %(grasa_g)s, proteina_g = %(proteina_g)s, kcal = %(kcal)s,
-                 hidratos_bolo_g = %(hidratos_bolo_g)s, hidratos_modelo_g = %(hidratos_bolo_g)s, rango_hidratos_min_g = %(rango_hidratos_min_g)s,
+                 hidratos_bolo_g = %(hidratos_bolo_g)s, hidratos_modelo_g = %(hidratos_modelo_g)s,
+                 plato_id = %(plato_id)s, rango_hidratos_min_g = %(rango_hidratos_min_g)s,
                  rango_hidratos_max_g = %(rango_hidratos_max_g)s, items = %(items)s, estimaciones = %(estimaciones)s,
                  alertas = %(alertas)s, estado_analisis = 'lista', error_analisis = NULL, analizada_en = %(ahora)s
                WHERE id = %(id)s AND NOT revisada""",
@@ -214,9 +262,24 @@ def vuelta(con, tabla, analizar_plato=None) -> dict | None:
     return analizar(con, c, tabla, analizar_plato) if c else None
 
 
-def vuelta_chat(con) -> dict | None:
+def hidratos_tabla(tabla, alimentos: list[dict]) -> float | None:
+    """Hidratos (para el bolo) de los alimentos del chat según la tabla; None si falta alguno."""
+    items = [{"nombre": str(a.get("nombre") or ""), "nombre_en": str(a.get("nombre_en") or ""),
+              "gramos": a.get("gramos")} for a in alimentos]
+    if not items:
+        return None
+    try:
+        r = N.procesar_respuesta({"items": items}, tabla)
+    except (TypeError, ValueError):
+        return None
+    if not all(i["en_bd"] and i["gramos"] > 0 for i in r["items"]):
+        return None
+    return N.hc_bolo(r["via_bd"])
+
+
+def vuelta_chat(con, tabla=None) -> dict | None:
     return chat.vuelta(con, lambda texto: chat.consultar(C.OLLAMA_URL, CHAT_MODELO, texto, timeout=C.TIMEOUT),
-                       CHAT_MODELO)
+                       CHAT_MODELO, (lambda al: hidratos_tabla(tabla, al)) if tabla is not None else None)
 
 
 def main(argv=None) -> int:
@@ -243,7 +306,7 @@ def main(argv=None) -> int:
         while True:
             try:
                 # Primero las comidas (esperan una dosis); el chat, después.
-                if vuelta(con, tabla) is None and vuelta_chat(con) is None:
+                if vuelta(con, tabla) is None and vuelta_chat(con, tabla) is None:
                     time.sleep(INTERVALO_S)
             except Exception:
                 log.exception("Fallo en la vuelta")

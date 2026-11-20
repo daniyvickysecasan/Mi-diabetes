@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
 from api.deps import requiere_sesion
+from comun import platos as P
 
 router = APIRouter(prefix="/api/comidas", tags=["comidas"])
 SESION = Depends(requiere_sesion, scope="function")
@@ -52,6 +53,7 @@ class Revision(BaseModel):
     grasa_g: float | None = Field(default=None, ge=0, le=300)
     proteina_g: float | None = Field(default=None, ge=0, le=300)
     referencia: bool = False            # "la he pesado o tiene etiqueta": sus hidratos son la referencia
+    plato: str | None = Field(default=None, max_length=120)   # guardar como "mis platos" con este nombre
 
 
 def _num(x):
@@ -61,7 +63,7 @@ def _num(x):
 def para_la_app(f: dict) -> dict:
     return {"id": f["id"], "ts": f["ts"].isoformat(), "origen": f["origen"], "descripcion": f["descripcion"],
             "estado": f["estado_analisis"], "error": f["error_analisis"], "revisada": f["revisada"],
-            "corregida": f["corregida"], "referencia": f["referencia"],
+            "corregida": f["corregida"], "referencia": f["referencia"], "plato_id": f["plato_id"],
             "hidratos_modelo_g": _num(f["hidratos_modelo_g"]), "hidratos_g": _num(f["hidratos_bolo_g"]),
             "hidratos_min_g": _num(f["rango_hidratos_min_g"]), "hidratos_max_g": _num(f["rango_hidratos_max_g"]),
             "grasa_g": _num(f["grasa_g"]), "proteina_g": _num(f["proteina_g"]), "kcal": _num(f["kcal"]),
@@ -144,4 +146,5 @@ def revisar(id_: int, r: Revision, con=SESION):
              revisada = true, revisada_en = now(), corregida = %s, referencia = %s
            WHERE id = %s RETURNING *""",
         (hc, lo, hi, r.grasa_g, r.proteina_g, corregida, r.referencia, id_)).fetchone()
+    P.guardar_desde_comida(con, f, r.plato)        # la próxima vez, el mismo plato da lo mismo
     return para_la_app(f)

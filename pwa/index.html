@@ -226,6 +226,7 @@
           <li><button class="enlace-fila" data-ir="revisar">Dosis por revisar <span id="badge-menu" class="badge oculto"></span></button></li>
           <li><button class="enlace-fila" data-ir="avisos">Avisos y preguntas <span id="badge-avisos" class="badge oculto"></span></button></li>
           <li><button class="enlace-fila" data-ir="tresiba">Tresiba: dosis y franja horaria</button></li>
+          <li><button class="enlace-fila" data-ir="platos">Mis platos</button></li>
         </ul>
       </section>
       <section class="tarjeta">
@@ -274,6 +275,18 @@
         <h2>Dosis por revisar</h2>
         <p class="suave pequeno">Mientras no decidas, cada dosis dudosa cuenta en la insulina activa (lo más prudente).</p>
         <ul id="revisar-lista" class="lista"></ul>
+      </section>
+    </div>
+
+    <!-- ============================================================ mis platos -->
+    <div id="v-platos" class="vista oculto">
+      <button class="enlace volver" data-ir="mas">‹ Más</button>
+      <section class="tarjeta">
+        <h2>Mis platos</h2>
+        <p class="suave pequeno">Al confirmar una comida con nombre, se guarda aquí con sus hidratos. Si vuelves a escribir
+          el mismo nombre (en la foto, por texto o en el chat), se usa este valor en vez de volver a estimarlo.
+          Si una vez la pesas, ese valor manda. Bórralo para que se vuelva a estimar.</p>
+        <ul id="platos-lista" class="lista"></ul>
       </section>
     </div>
 
