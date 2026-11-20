@@ -813,7 +813,8 @@ function pintarEstimacion(c) {
     nodo("div", "suave", `Grasa ${num(c.grasa_g, 0)} g · proteína ${num(c.proteina_g, 0)} g · ${num(c.kcal, 0)} kcal`));
   if (c.items.length) {
     const ul = nodo("ul", "lista");
-    for (const i of c.items) ul.append(li(`${i.nombre}: ${num(i.gramos, 0)} g → ${num(i.hidratos, 0)} g de hidratos`));
+    for (const i of c.items) ul.append(li(i.gramos == null ? `${i.nombre}: ${num(i.hidratos, 0)} g de hidratos (tu plato)`
+      : `${i.nombre}: ${num(i.gramos, 0)} g → ${num(i.hidratos, 0)} g de hidratos`));
     d.append(ul);
   }
   if (c.alertas.length) { const ul = nodo("ul", "avisos"); for (const a of c.alertas) ul.append(nodo("li", "", a)); d.append(ul); }
@@ -833,12 +834,18 @@ function pintarEstimacion(c) {
   const ref = nodo("label", "casilla");
   const caja = document.createElement("input"); caja.type = "checkbox"; caja.id = "s-ref";
   ref.append(caja, document.createTextNode(" La he pesado o tiene etiqueta (sirve para medir el error de los modelos)"));
-  d.append(fila, ref, nodo("p", "suave pequeno", "Son estimaciones de los modelos: compruébalas antes de confirmar."));
+  const pl = nodo("label", "", "Guardar como plato (la próxima vez dará lo mismo; vacío = no guardar)");
+  const nombre = document.createElement("input"); nombre.id = "s-plato"; nombre.maxLength = 120;
+  nombre.placeholder = "p. ej. bocadillo de jamón"; nombre.value = (c.descripcion || "").slice(0, 120);
+  pl.append(nombre);
+  d.append(fila, ref, pl, nodo("p", "suave pequeno", c.plato_id ? "Es el valor de tu plato guardado: compruébalo antes de confirmar."
+    : "Son estimaciones de los modelos: compruébalas antes de confirmar."));
 }
 
 async function confirmarComida(cambios) {
   try {
-    const c = await pedir(`/api/comidas/${comidaActual.id}/revisar`, { ...cambios, referencia: !!$("s-ref")?.checked });
+    const c = await pedir(`/api/comidas/${comidaActual.id}/revisar`, { ...cambios, referencia: !!$("s-ref")?.checked,
+      plato: ($("s-plato")?.value || "").trim() || null });
     const id = c.id;
     comidaActual = null;
     $("s-estimacion").classList.add("oculto");
@@ -860,7 +867,11 @@ function detalleChat(e) {
   const partes = [TIPOS_CHAT[e.tipo] || "Sin tipo"];
   if (e.inicio) partes.push(e.fin ? `${fechaHora(e.inicio)}–${hora(e.fin)}` : fechaHora(e.inicio));
   const est = e.estimacion || {};
-  if (est.hidratos_g) partes.push(`${est.hidratos_g[0]}–${est.hidratos_g[1]} g de hidratos`);
+  if (est.hidratos_g) {
+    const [a, b] = est.hidratos_g;
+    const de = { plato: ` (tu plato «${est.plato}»)`, tabla: " (tabla de alimentos)", modelo: " (estimación del modelo)" };
+    partes.push(`${a === b ? a : `${a}–${b}`} g de hidratos${de[est.fuente_hidratos] || ""}`);
+  }
   if (est.bebidas != null) partes.push(`${num(est.bebidas)} bebidas`);
   if (est.intensidad) partes.push(`intensidad ${est.intensidad}`);
   if (est.duracion_min != null && !e.fin) partes.push(`${est.duracion_min} min`);
@@ -931,11 +942,36 @@ async function enviarChat(ev) {
   }
 }
 
+// ------------------------------------------------------------------ mis platos
+async function cargarPlatos() {
+  const ul = $("platos-lista");
+  try {
+    const { platos } = await pedir("/api/platos");
+    if (!platos.length) return ul.replaceChildren(li("Aún no hay platos: se guardan al confirmar una comida con nombre.", "suave"));
+    ul.replaceChildren(...platos.map((p) => {
+      const e = nodo("li", "caso");
+      e.append(nodo("div", "fuerte", `${p.nombre}: ${num(p.hidratos_g, 0)} g de hidratos${p.referencia ? " · pesado" : ""}`),
+        nodo("div", "suave pequeno", `${p.veces} ${p.veces === 1 ? "vez" : "veces"} · último ${fechaHora(p.actualizado_en)}`));
+      const acc = nodo("div", "acciones");
+      const b = nodo("button", "", "Borrar"); b.type = "button";
+      b.addEventListener("click", async () => {
+        try { await pedir(`/api/platos/${p.id}/borrar`, {}); cargarPlatos(); }
+        catch (err) { if (err.estado === 401) return mostrar("entrada"); aviso(err.estado ? err.message : "Sin conexión", true); }
+      });
+      acc.append(b); e.append(acc);
+      return e;
+    }));
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    ul.replaceChildren(li(e.estado ? e.message : "Sin conexión", "suave"));
+  }
+}
+
 // ------------------------------------------------------------------ navegación
 let temporizador, vista = "panel";
 const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: () => { cargarRegistrar(); cargarChat(); },
-  mas: () => {}, tresiba: cargarTresiba, revisar: cargarRevisar, avisos: cargarAvisos };
-const PESTANA = { tresiba: "mas", revisar: "mas", avisos: "mas" };      // subpantallas de "Más"
+  mas: () => {}, tresiba: cargarTresiba, revisar: cargarRevisar, avisos: cargarAvisos, platos: cargarPlatos };
+const PESTANA = { tresiba: "mas", revisar: "mas", avisos: "mas", platos: "mas" };      // subpantallas de "Más"
 const refrescarVista = () => CARGAS[vista]();
 
 function ir(cual, foco) {
