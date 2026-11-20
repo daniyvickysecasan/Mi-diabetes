@@ -4,6 +4,14 @@ Estado del proyecto a 18-11-2026.
 
 > **Actualización 18-11-2026:** las decisiones posteriores están en `Plan_Desarrollo_Mi_Diabetes.md`, que manda si hay discrepancia. Cambios clave: sin dosis máxima fija; sugerencias desde el principio con indicador de incertidumbre; objetivo 90 mg/dL; dosis vía script propio contra LibreView más confirmación en la app; registro tipo chat. Este documento resume todo lo decidido en la conversación inicial para continuar el trabajo en el proyecto "Mi Diabetes".
 
+> **Actualización 20-11-2026 (fase 3):** el estado al día está en el plan (fase 3, «Estado a 20-11-2026»). Resumen:
+> - **Comidas:** foto (con descripción opcional, que manda en qué alimentos hay) o texto → modelos locales en Ollama → tabla con alertas → un toque en «Correcto» o corregir → dosis determinista. Sin revisión no hay dosis.
+> - **Dosis:** antes de cada cálculo se lee la pluma en LibreView (la hora en curso cuenta) y Daniel confirma que no hay Fiasp sin apuntar desde la última sincronización con LibreLink.
+> - **Corrección sin comer:** botón «¿Cuánto me pongo ahora?» en Inicio (corrige hacia 110 hasta validar la predicción).
+> - **Chat:** frase libre → modelo local → evento con tipo, hora (la calcula el código), estimación e incertidumbre → Daniel confirma, corrige o descarta. Nunca entra en una dosis. Sin aviso por alcohol.
+> - **Pluma:** NovoPen Echo Plus confirmada; las dosis llegan con el lector propio de LibreView (decisión abierta 1 cerrada).
+> - **App:** cuatro pestañas: Inicio, Comer, Apuntar y Más.
+
 ## 1. Objetivo
 
 Sistema personal, local y modular para gestionar la diabetes:
