@@ -83,7 +83,7 @@ select { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border:
 .toast { position: fixed; left: 16px; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); margin: 0 auto;
          max-width: 488px; padding: 12px 14px; border-radius: 12px; background: var(--tarjeta);
          box-shadow: 0 4px 16px rgba(0, 0, 0, .35); z-index: 20; }
-.nav { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr);
+.nav { position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr);
        background: var(--tarjeta); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); z-index: 10;
        border-top: 1px solid rgba(148, 163, 184, .2); }
 .nav button { background: none; color: var(--suave); padding: 10px 4px; font-size: .9rem; }
@@ -128,3 +128,14 @@ select { width: 100%; font: inherit; padding: 10px; border-radius: 10px; border:
 .chat .acciones { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .chat .acciones button, .chat .acciones select { width: auto; flex: 1 1 auto; padding: 8px 10px; font-size: .9rem; }
 form.tarjeta .chat .acciones button.primario { margin-top: 0; }
+
+/* Reorganización en 4 pestañas */
+.objetivo h2 { margin-bottom: 10px; }
+button.grande { font-size: 1.15rem; padding: 16px; }
+#h-inicio #s-resultado, #h-inicio #s-confirmar { background: none; padding: 0; margin: 12px 0 0; box-shadow: none; }
+#h-inicio #s-estado { margin-top: 8px; }
+.rapidos { grid-template-columns: 1fr 1fr 1fr; }
+.lista.menu li { padding: 0; }
+.enlace-fila { width: 100%; text-align: left; background: none; color: var(--texto); padding: 14px 0; font-size: 1rem; }
+.enlace-fila::after { content: "›"; float: right; color: var(--suave); }
+.volver { margin: 4px 0 8px; }

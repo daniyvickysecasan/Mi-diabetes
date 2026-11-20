@@ -319,8 +319,7 @@ function pintarFase2(p) {
   const r = $("aviso-revisar");
   r.classList.toggle("oculto", !p.por_revisar);
   r.textContent = p.por_revisar ? `${p.por_revisar} dosis por revisar →` : "";
-  const b = $("badge");
-  b.classList.toggle("oculto", !p.por_revisar); b.textContent = p.por_revisar || "";
+  for (const b of [$("badge"), $("badge-menu")]) { b.classList.toggle("oculto", !p.por_revisar); b.textContent = p.por_revisar || ""; }
   const m = p.metricas_14d, dl = $("metricas");
   dl.replaceChildren();
   const filas = [
@@ -440,7 +439,7 @@ async function cargarRevisar() {
   const ul = $("revisar-lista");
   try {
     const { dosis } = await pedir("/api/dosis/revisar");
-    if (!dosis.length) { ul.replaceChildren(li("Nada que revisar", "suave")); $("badge").classList.add("oculto"); return; }
+    if (!dosis.length) { ul.replaceChildren(li("Nada que revisar", "suave")); for (const b of [$("badge"), $("badge-menu")]) b.classList.add("oculto"); return; }
     ul.replaceChildren(...dosis.map((d) => {
       const e = document.createElement("li");
       e.className = "caso";
@@ -470,7 +469,7 @@ async function cargarRevisar() {
 
 // ------------------------------------------------------------------ dosis (fase 3)
 // Antes de cada cálculo se lee la pluma en LibreView y se pregunta si falta alguna dosis por apuntar.
-let tipoSug = "comida", ocupado = false;
+let ocupado = false;
 const NIVEL = { alta: "Incertidumbre alta", media: "Incertidumbre media", baja: "Incertidumbre baja" };
 const DECISION = { hecho: "Hecho", modificado: "Modificado", ignorado: "Ignorado" };
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -478,7 +477,6 @@ function nodo(tag, cls = "", texto = "") { const e = document.createElement(tag)
 const numero = (id) => { const v = leerNumero($(id).value); return Number.isFinite(v) ? v : undefined; };
 
 function peticionSugerencia() {
-  if (tipoSug === "correccion") return { tipo: "correccion" };
   const hc = numero("s-hc");
   if (!(hc >= 0)) throw new Error("Escribe los hidratos (0 si no comes)");
   const p = { tipo: "comida", hidratos_g: hc };
@@ -496,7 +494,7 @@ async function leerPluma() {
     const s = await pedir(`/api/libreview/actualizar/${solicitud}`);
     if (s.resultado) {
       est.textContent = s.resultado === "ok" ? "Pluma leída." : s.resultado === "sin_sesion"
-        ? "LibreView pide el código del SMS (dáselo en el panel) o apunta tus dosis."
+        ? "LibreView pide el código del SMS (dáselo en Inicio) o apunta tus dosis."
         : `No se ha podido leer la pluma: ${s.detalle || "error"}.`;
       return solicitud;
     }
@@ -521,10 +519,20 @@ function preguntar(sinc, leida) {
   });
 }
 
+// El cálculo se ve donde se pidió: en Inicio (corrección) o en Comer.
+function anclar(host) {
+  const f = $("flujo");
+  if (f.parentElement.id !== host) {
+    $(host).append(f);
+    $("s-resultado").classList.add("oculto"); $("s-estado").textContent = "";
+  }
+}
+
 // Pide al servidor (que responde 409 mientras la lectura no ha terminado) y pinta el resultado.
-async function conPluma(ruta, cuerpo) {
+async function conPluma(ruta, cuerpo, host = "h-comer") {
   if (ocupado) return;
-  ocupado = true; $("s-calcular").disabled = true;
+  anclar(host);
+  ocupado = true; $("s-calcular").disabled = $("btn-correccion").disabled = true;
   try {
     cuerpo.solicitud_lectura_id = await leerPluma();
     const [lect, est] = await Promise.all([pedir(`/api/libreview/actualizar/${cuerpo.solicitud_lectura_id}`),
@@ -540,11 +548,12 @@ async function conPluma(ruta, cuerpo) {
     }
     if (!s) throw new Error("La lectura de la pluma no termina: inténtalo de nuevo");
     pintarSugerencia(s);
-    cargarDosis();
+    $("s-resultado").scrollIntoView({ block: "nearest" });
+    if (vista === "dosis") cargarDosis();
   } catch (e) {
     if (e.estado === 401) return mostrar("entrada");
     aviso(e.estado ? e.message : "Sin conexión: el cálculo necesita conexión", true);
-  } finally { ocupado = false; $("s-calcular").disabled = false; }
+  } finally { ocupado = false; $("s-calcular").disabled = $("btn-correccion").disabled = false; }
 }
 
 function calcularDosis(ev) {
@@ -618,6 +627,8 @@ function pintarSugerencia(s) {
     if (inc.motivos.length) c.append(nodo("p", "suave pequeno centro", inc.motivos.join(" ")));
     c.append(nodo("p", "suave pequeno desglose", s.tipo === "segunda"
       ? `Glucosa ${s.glucosa_mgdl} mg/dL · insulina activa ${num(s.insulina_activa_u, 2)} U`
+      : s.tipo === "correccion"
+      ? `Corrección ${num(s.u_correccion, 2)} U − insulina activa ${num(s.insulina_activa_u, 2)} U · glucosa ${s.glucosa_mgdl} mg/dL`
       : `Hidratos ${num(s.u_hidratos, 2)} U + corrección ${num(s.u_correccion, 2)} U − insulina activa ${num(s.insulina_activa_u, 2)} U · glucosa ${s.glucosa_mgdl} mg/dL`));
     if (s.u_segunda) c.append(nodo("p", "fuerte", `Y una segunda inyección de ${num(s.u_segunda)} U a las ${hora(s.ts_segunda)} por la grasa y la proteína (${num(s.ugp)} UGP). A esa hora se vuelve a comprobar tu glucosa.`));
   }
@@ -638,7 +649,7 @@ async function cargarDosis() {
       const cab = s.tipo === "comida" ? `comida ${num(s.hidratos_g, 0)} g` : s.tipo === "segunda" ? "segunda inyección" : "corrección";
       const t = nodo("div", "fuerte", `${fechaHora(s.ts)} · ${cab} · ${s.bloqueada ? "bloqueada" : `${num(s.u_inmediata)} U`}`
         + (s.u_segunda ? ` + ${num(s.u_segunda)} U a las ${hora(s.ts_segunda)}` : ""));
-      t.addEventListener("click", () => { pintarSugerencia(s); window.scrollTo(0, 0); });
+      t.addEventListener("click", () => { anclar("h-comer"); pintarSugerencia(s); $("flujo").scrollIntoView(); });
       e.append(t, nodo("div", "suave pequeno", s.decision ? textoDecision(s.decision) : "Sin decidir: toca para verla"));
       if (segundaAbierta(s)) {
         const b = nodo("button", "primario", `Comprobar la segunda inyección (${hora(s.ts_segunda)})`);
@@ -839,13 +850,15 @@ async function enviarChat(ev) {
 
 // ------------------------------------------------------------------ navegación
 let temporizador, vista = "panel";
-const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: () => { cargarRegistrar(); cargarChat(); }, tresiba: cargarTresiba, revisar: cargarRevisar };
+const CARGAS = { panel: refrescar, dosis: cargarDosis, registrar: () => { cargarRegistrar(); cargarChat(); },
+  mas: () => {}, tresiba: cargarTresiba, revisar: cargarRevisar };
+const PESTANA = { tresiba: "mas", revisar: "mas" };      // subpantallas de "Más"
 const refrescarVista = () => CARGAS[vista]();
 
 function ir(cual, foco) {
   vista = cual;
   for (const k of Object.keys(CARGAS)) $(`v-${k}`).classList.toggle("oculto", k !== cual);
-  document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("activo", b.dataset.ir === cual));
+  document.querySelectorAll(".nav button").forEach((b) => b.classList.toggle("activo", b.dataset.ir === (PESTANA[cual] || cual)));
   window.scrollTo(0, 0);
   refrescarVista();
   if (foco) setTimeout(() => $(foco).focus(), 50);
@@ -910,14 +923,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (texto.length < 3) return aviso("Describe la comida", true);
     analizarComida("/api/comidas/texto", { id_cliente: nuevoId(), texto });
   });
-  const elegirTipo = (tipo) => {
-    tipoSug = tipo;
-    document.querySelectorAll("[data-tipo]").forEach((x) => x.classList.toggle("activo", x.dataset.tipo === tipo));
-    $("s-comida").classList.toggle("oculto", tipo !== "comida");
-  };
-  document.querySelectorAll("[data-tipo]").forEach((b) => b.addEventListener("click", () => elegirTipo(b.dataset.tipo)));
-  $("btn-correccion").addEventListener("click", () => {   // corrección hacia el objetivo, sin comer
-    ir("dosis"); elegirTipo("correccion"); conPluma("/api/sugerencias", { tipo: "correccion" });
+  $("btn-correccion").addEventListener("click", () => {   // corrección hacia el objetivo, sin comer: en Inicio
+    conPluma("/api/sugerencias", { tipo: "correccion" }, "h-inicio");
   });
   window.addEventListener("online", () => { vaciarCola(); refrescarVista(); });
   document.addEventListener("visibilitychange", () => {
