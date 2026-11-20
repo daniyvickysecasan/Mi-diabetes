@@ -9,7 +9,7 @@ Borrador del 18-11-2026, pendiente de aprobación. Si este plan y el traspaso di
 - **Sin dosis máxima fija.** Límites que quedan: ninguna dosis con hipoglucemia prevista y alerta por acumulación de insulina.
 - **Hidratos sin dosis** (hipos, picoteo): botón rápido "hidratos de corrección" con gramos.
 - **Parámetros:** hoy no hay ratio ni sensibilidad definidos ("a ojo"). Las sugerencias se muestran **desde el principio con un indicador de incertidumbre**. Objetivo de glucosa: **90 mg/dL** (110 como margen hasta validar la predicción).
-- **Registro tipo chat (nuevo):** texto libre rápido ("me estoy tomando unas cervezas con los amigos"). Un modelo local lo convierte en un evento estructurado e incompleto (tipo, hora, estimación aproximada con incertidumbre, etiquetas como alcohol o ejercicio). Nunca produce números de dosis. El alcohol activa un aviso de riesgo de hipoglucemia tardía.
+- **Registro tipo chat (nuevo):** texto libre rápido ("me estoy tomando unas cervezas con los amigos"). Un modelo local lo convierte en un evento estructurado e incompleto (tipo, hora, estimación aproximada con incertidumbre, etiquetas como alcohol o ejercicio). Nunca produce números de dosis. **Sin aviso por alcohol** (Daniel lo rechazó el 19-11-2026): el alcohol queda solo como etiqueta.
 - **Pluma → Nightscout (18-11):** nada de un Android aparte para leer la pluma por NFC. Se usa el script propio contra LibreView; la confirmación en la app sigue siendo la vía en tiempo real y el respaldo.
 - **Repositorio:** monorepo privado `mi-diabetes` en GitHub (ver sección 9).
 
@@ -81,7 +81,7 @@ Borrador del 18-11-2026, pendiente de aprobación. Si este plan y el traspaso di
 1. Probar el prototipo con Ollama real y los tres modelos (tiempos, memoria de GPU, calidad).
 2. ∥ Integrar el módulo de comidas en la API y la pantalla de comida de la PWA.
 3. ∥ Sustituir el bolo extendido por la **segunda inyección con hora** (método de Varsovia).
-4. ∥ Registro tipo chat: texto libre → evento estructurado con incertidumbre; aviso por alcohol.
+4. ∥ Registro tipo chat: texto libre → evento estructurado con incertidumbre (sin aviso por alcohol, decisión del 19-11-2026).
 5. Cálculo determinista de la sugerencia (hidratos + corrección − insulina activa) con indicador de incertidumbre (según dispersión de hidratos y confianza de los parámetros) y freno por hipoglucemia basado en glucosa actual y tendencia. Hasta que la predicción de la fase 5 esté validada, la corrección se calcula con objetivo 110 como margen de seguridad; después se baja a 90.
 6. Registro de la decisión y del resultado a 3–4 h.
 
@@ -97,6 +97,13 @@ Borrador del 18-11-2026, pendiente de aprobación. Si este plan y el traspaso di
 **Riesgos (seguridad en dosis).** Parámetros iniciales inventados: el indicador de incertidumbre debe ser muy visible al principio. Objetivo 90 con parámetros inciertos aumenta el riesgo de hipo. Errores grandes de los modelos de visión en platos compuestos. Alcohol y segunda inyección: riesgo de hipo tardía.
 
 **Qué necesito de ti.** Parámetros de partida, aunque sean aproximados (lo que haces "a ojo" para una comida típica). Pesar o etiquetar unas 20 comidas. Rellenar `alimentos_propios.csv` con lo que comes a menudo.
+
+**Estado a 20-11-2026 (PR 15–21).**
+- Hecho y desplegado: motor determinista (PR 15), pantalla de sugerencia con decisión y resultado a 4 h (PR 16), hora en curso de la pluma y confirmación «no hay Fiasp sin apuntar desde la última sincronización» antes de cada cálculo (PR 17), comida por foto o texto con revisión de un toque (PR 18) y una ronda por modelo con segunda solo si discrepan, contexto de 8192 tokens (PR 19).
+- Fusionado, pendiente de desplegar (Docker Desktop no arranca tras la actualización de Windows del 20-11): chat (PR 20), descripción que guía a la foto, base USDA en un paso, fotos en la copia restic y app en 4 pestañas con la corrección sin comer en Inicio (PR 21).
+- Parámetros: versión 1 activa (aprobada el 19-11-2026, confianza baja).
+- Medido: la foto tarda unos 10 min porque los modelos están en un disco duro mecánico (unos 3 min de carga cada uno); la generación en la GPU tarda segundos. Se moverán a un SSD nuevo.
+- Pendiente para aceptar la fase: 20 comidas pesadas o con etiqueta (error de hidratos), ≤ 90 s por foto (tras el SSD) y la prueba de 20 frases del chat (`herramientas/frases_chat.py`).
 
 ---
 
