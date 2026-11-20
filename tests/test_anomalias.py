@@ -237,3 +237,13 @@ def test_evaluacion_con_episodios_etiquetados(con):
     p = r["por_tipo"]["presion"]
     assert p["etiquetados"] == 2 and p["detectados"] == 1 and p["deteccion_pct"] == 50.0 and p["sin_etiqueta"] == 0
     assert r["total"]["cumple"] is False and len(p["no_detectados"]) == 1
+
+
+def test_episodio_ya_terminado_no_se_notifica(con, ntfy):
+    """Al arrancar el servicio no avisa por el móvil de una subida que acabó hace horas."""
+    subida = [100] * 12 + [100 + 6 * i for i in range(1, 19)] + [200] * 3
+    _lecturas(con, subida + [130] * 36, hasta=AHORA)            # el pico fue hace unas 3 h
+    r = _ciclo(con, ntfy)
+    a = con.execute("SELECT * FROM anomalias WHERE tipo = 'subida_sin_comida'").fetchone()
+    assert a is not None and a["aviso_estado"] == "retenido" and a["estado"] == "abierta"
+    assert r["avisos"]["enviados"] == 0 and ntfy.app.state.mensajes == []
