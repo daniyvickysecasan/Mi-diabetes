@@ -13,5 +13,5 @@ web-root: "disable"                     # sin web: solo la app del iPhone y el s
 # iPhone: iOS solo despierta la app ntfy con una notificación de Apple, y eso solo lo puede pedir
 # ntfy.sh. Con esta línea tu servidor manda a ntfy.sh SOLO un identificador del mensaje (sin título
 # ni texto); el iPhone descarga el aviso de tu servidor. Sin ella, nada sale a terceros pero los
-# avisos llegan tarde (cuando abres la app). Pendiente de que Daniel lo confirme (20-11-2026).
+# avisos llegan tarde (cuando abres la app). Daniel eligió el relevo el 20-11-2026.
 upstream-base-url: "https://ntfy.sh"
