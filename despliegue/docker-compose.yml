@@ -96,6 +96,16 @@ services:
     volumes:
       - alimentos:/datos/alimentos
 
+  preparar-alimentos:     # una vez: docker compose --profile herramientas run --rm preparar-alimentos
+    <<: *app              # CIQUAL (etalab 2.0) y CoFID (OGL v3): ver servicios/comidas/fuentes_alimentos.py
+    profiles: ["herramientas"]
+    restart: "no"
+    command: ["python", "-m", "servicios.comidas.fuentes_alimentos", "todas"]
+    environment:
+      RUTA_ALIMENTOS: /datos/alimentos
+    volumes:
+      - alimentos:/datos/alimentos
+
   # Fase 4: detecta anomalías y avisa por ntfy (servicios/anomalias). Ver ntfy/README.md.
   anomalias:
     <<: *app
