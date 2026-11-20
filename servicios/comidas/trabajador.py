@@ -198,7 +198,7 @@ def analizar(con, comida: dict, tabla, analizar_plato=None) -> dict:
         con.execute(
             """UPDATE comidas SET hidratos_g = %(hidratos_g)s, fibra_g = %(fibra_g)s, azucares_g = %(azucares_g)s,
                  grasa_g = %(grasa_g)s, proteina_g = %(proteina_g)s, kcal = %(kcal)s,
-                 hidratos_bolo_g = %(hidratos_bolo_g)s, rango_hidratos_min_g = %(rango_hidratos_min_g)s,
+                 hidratos_bolo_g = %(hidratos_bolo_g)s, hidratos_modelo_g = %(hidratos_bolo_g)s, rango_hidratos_min_g = %(rango_hidratos_min_g)s,
                  rango_hidratos_max_g = %(rango_hidratos_max_g)s, items = %(items)s, estimaciones = %(estimaciones)s,
                  alertas = %(alertas)s, estado_analisis = 'lista', error_analisis = NULL, analizada_en = %(ahora)s
                WHERE id = %(id)s AND NOT revisada""",

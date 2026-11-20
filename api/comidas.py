@@ -51,6 +51,7 @@ class Revision(BaseModel):
     hidratos_g: float | None = Field(default=None, ge=0, le=500)
     grasa_g: float | None = Field(default=None, ge=0, le=300)
     proteina_g: float | None = Field(default=None, ge=0, le=300)
+    referencia: bool = False            # "la he pesado o tiene etiqueta": sus hidratos son la referencia
 
 
 def _num(x):
@@ -60,7 +61,8 @@ def _num(x):
 def para_la_app(f: dict) -> dict:
     return {"id": f["id"], "ts": f["ts"].isoformat(), "origen": f["origen"], "descripcion": f["descripcion"],
             "estado": f["estado_analisis"], "error": f["error_analisis"], "revisada": f["revisada"],
-            "corregida": f["corregida"], "hidratos_g": _num(f["hidratos_bolo_g"]),
+            "corregida": f["corregida"], "referencia": f["referencia"],
+            "hidratos_modelo_g": _num(f["hidratos_modelo_g"]), "hidratos_g": _num(f["hidratos_bolo_g"]),
             "hidratos_min_g": _num(f["rango_hidratos_min_g"]), "hidratos_max_g": _num(f["rango_hidratos_max_g"]),
             "grasa_g": _num(f["grasa_g"]), "proteina_g": _num(f["proteina_g"]), "kcal": _num(f["kcal"]),
             "items": f["items"] or [], "alertas": f["alertas"] or [],
@@ -139,7 +141,7 @@ def revisar(id_: int, r: Revision, con=SESION):
     f = con.execute(
         """UPDATE comidas SET hidratos_bolo_g = %s, rango_hidratos_min_g = %s, rango_hidratos_max_g = %s,
              grasa_g = coalesce(%s, grasa_g), proteina_g = coalesce(%s, proteina_g),
-             revisada = true, revisada_en = now(), corregida = %s
+             revisada = true, revisada_en = now(), corregida = %s, referencia = %s
            WHERE id = %s RETURNING *""",
-        (hc, lo, hi, r.grasa_g, r.proteina_g, corregida, id_)).fetchone()
+        (hc, lo, hi, r.grasa_g, r.proteina_g, corregida, r.referencia, id_)).fetchone()
     return para_la_app(f)

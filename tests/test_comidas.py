@@ -307,3 +307,19 @@ def test_sin_base_usda_un_solo_aviso_claro():
 def test_la_foto_guarda_la_descripcion_larga(cli, con):
     r = _foto(cli, id_cliente="foto-cliente-9", nota="steak tartar " * 50)
     assert r.status_code == 200 and con.execute("SELECT descripcion FROM comidas").fetchone()["descripcion"].startswith("steak")
+
+
+# ------------------------------------------------------------------ comidas de referencia
+def test_referencia_guarda_lo_que_dijeron_los_modelos(cli, con, lista):
+    v = cli.post(f"/api/comidas/{lista}/revisar", json={"hidratos_g": 50, "referencia": True}).json()
+    assert v["referencia"] and v["hidratos_g"] == 50 and v["hidratos_modelo_g"] == 62
+
+
+def test_evaluar_comidas():
+    from herramientas.evaluar_comidas import evaluar
+    filas = [{"hidratos_modelo_g": 62, "hidratos_bolo_g": 50, "items": [1, 2]},
+             {"hidratos_modelo_g": 20, "hidratos_bolo_g": 23, "items": [1]},
+             {"hidratos_modelo_g": None, "hidratos_bolo_g": 10, "items": []}]
+    r = evaluar(filas)
+    assert r["compuesto"] == {"n": 1, "error_medio_g": 12.0, "ok": True}
+    assert r["simple"]["error_medio_g"] == 3.0 and r["total"] == {"n": 2, "suficientes": False, "aceptada": False}
