@@ -24,6 +24,7 @@ import base64
 import json
 import logging
 import os
+import sqlite3
 import sys
 import time
 from datetime import datetime, timezone
@@ -31,9 +32,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
+from rapidfuzz import fuzz, process
 
-from comun.ajustes import Ajustes
 from comun import platos as P
+from comun.ajustes import Ajustes
 from comun.bd import conectar
 from servicios.comidas import chat
 
@@ -42,6 +44,7 @@ if str(_AQUI) not in sys.path:          # el prototipo importa `config` por su n
     sys.path.insert(0, str(_AQUI))
 import config as C
 import nutricion as N
+from coincidencia import Indice
 
 log = logging.getLogger("comidas")
 INTERVALO_S = 3
@@ -106,10 +109,59 @@ def fuente_foto(nota: str) -> str:
             "otra cosa); usa la foto sobre todo para estimar las cantidades. Si la descripción da cantidades, úsalas.")
 
 
+# Bases abiertas además de USDA, por orden de preferencia (servicios/comidas/fuentes_alimentos.py).
+FUENTES_EXTRA = (("ciqual", "CIQUAL"), ("cofid", "CoFID"))
+VENTAJA = 3      # puntos de similitud: una base anterior gana a una posterior si está a esta distancia
+
+
+class TablaVarias(N.TablaAlimentos):
+    """La tabla del prototipo (alimentos propios en español, luego USDA) con CIQUAL y CoFID.
+
+    Orden: alimentos propios (nombre en español) → la mejor coincidencia del nombre en inglés entre
+    CIQUAL, CoFID y USDA (coincidencia.py: todas las palabras, penalizando las que cambian el
+    alimento; antes era un parecido difuso que daba disparates). Si dos bases coinciden casi igual (a VENTAJA puntos), gana la primera:
+    CIQUAL y CoFID traen más platos preparados y europeos que USDA. Sin modelos: solo texto."""
+
+    def __init__(self, ruta_bd=None, ruta_propios=None, carpeta_extra: Path | None = None):
+        super().__init__(ruta_bd or C.RUTA_BD, ruta_propios or C.RUTA_PROPIOS)
+        self.bases = []                                   # [(etiqueta, filas, índice)]
+        carpeta = carpeta_extra or Path(C.RUTA_BD).parent
+        for archivo, etiqueta in FUENTES_EXTRA:
+            ruta = carpeta / f"{archivo}.sqlite"
+            if ruta.exists():
+                with sqlite3.connect(ruta) as con:
+                    con.row_factory = sqlite3.Row
+                    filas = [dict(r) | {"fuente": etiqueta} for r in con.execute("SELECT * FROM alimentos")]
+                self.bases.append((etiqueta, filas, Indice([f["nombre"] for f in filas])))
+        if self.usda:
+            self.bases.append(("USDA", self.usda, Indice(self._nombres_usda)))
+
+    def resumen(self) -> str:
+        return ", ".join(f"{e} {len(f)}" for e, f, _ in self.bases) or "ninguna"
+
+    def buscar(self, nombre_es: str, nombre_en: str):
+        if self.propios and nombre_es:
+            m = process.extractOne(nombre_es.lower(), [p[0] for p in self.propios], scorer=fuzz.WRatio)
+            if m and m[1] >= max(C.UMBRAL_COINCIDENCIA, 88):
+                return self.propios[m[2]][1], m[1]
+        if not nombre_en:
+            return None, 0
+        candidatos = []                                   # (puntos, orden, fila)
+        for orden, (_, filas, indice) in enumerate(self.bases):
+            m = indice.mejor(nombre_en)
+            if m is not None:
+                candidatos.append((round(m[1]), orden, filas[m[0]]))
+        if not candidatos:
+            return None, 0
+        mejor = max(c[0] for c in candidatos)
+        punt, _, f = min((c for c in candidatos if c[0] >= mejor - VENTAJA), key=lambda c: c[1])
+        return f, punt
+
+
 def limpiar_alertas(alertas: list[str], tabla) -> list[str]:
-    """Sin base USDA, el aviso de "sin coincidencia" saldría en todos los platos: se cambia por uno
-    solo y claro."""
-    if getattr(tabla, "usda", None):
+    """Sin ninguna base de alimentos, el aviso de "sin coincidencia" saldría en todos los platos: se
+    cambia por uno solo y claro."""
+    if getattr(tabla, "bases", None) or getattr(tabla, "usda", None):
         return alertas
     otras = [a for a in alertas if not a.startswith("Sin coincidencia en la base")]
     if len(otras) != len(alertas):
@@ -291,9 +343,9 @@ def main(argv=None) -> int:
     u.add_argument("id", type=int)
     a = p.parse_args(argv)
     configurar()
-    tabla = N.TablaAlimentos(C.RUTA_BD, C.RUTA_PROPIOS)
-    log.info("Modelos %s, hasta %s rondas, chat con %s, en %s; base USDA %s", C.MODELOS, RONDAS_MAX, CHAT_MODELO, C.OLLAMA_URL,
-             "sí" if tabla.usda else "no (solo alimentos propios y estimación del modelo)")
+    tabla = TablaVarias()
+    log.info("Modelos %s, hasta %s rondas, chat con %s, en %s; base USDA %s; bases de alimentos: %s",
+             C.MODELOS, RONDAS_MAX, CHAT_MODELO, C.OLLAMA_URL, "sí" if tabla.usda else "no", tabla.resumen())
     aj = Ajustes.desde_entorno()
     with conectar(aj.database_url, autocommit=True) as con:
         # Lo que quedó a medias si el trabajador se paró vuelve a la cola.
