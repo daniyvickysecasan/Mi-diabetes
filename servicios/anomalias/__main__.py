@@ -3,7 +3,8 @@
   python -m servicios.anomalias ciclo                 # una pasada: detecta, guarda y avisa
   python -m servicios.anomalias servicio              # bucle cada INTERVALO_ANOMALIAS_S (5 min)
   python -m servicios.anomalias probar-aviso          # manda un aviso de prueba a ntfy
-  python -m servicios.anomalias evaluar --desde 2026-05-01 [--hasta ...]
+  python -m servicios.anomalias evaluar --desde 2026-11-21 --en-vivo   # criterio de la fase 4
+  python -m servicios.anomalias evaluar --desde 2026-05-01 [--hasta ...] # reglas sobre el histórico
   python -m servicios.anomalias umbrales              # umbrales en uso (ANOMALIA_* del .env)
 """
 import argparse
@@ -63,6 +64,7 @@ def main(argv=None) -> int:
     ev = sub.add_parser("evaluar")
     ev.add_argument("--desde", type=_fecha, required=True)
     ev.add_argument("--hasta", type=_fecha)
+    ev.add_argument("--en-vivo", action="store_true", help="avisos respondidos + episodios que se escaparon")
     a = p.parse_args(argv)
 
     aj = Ajustes.desde_entorno()
@@ -81,7 +83,8 @@ def main(argv=None) -> int:
         return 0
     if a.orden == "evaluar":
         with conectar(aj.database_url, autocommit=True) as con:
-            _imprimir(E.evaluar(con, a.desde, a.hasta or datetime.now(timezone.utc), u))
+            f = E.evaluar_en_vivo if a.en_vivo else E.evaluar
+            _imprimir(f(con, a.desde, a.hasta or datetime.now(timezone.utc), u))
         return 0
     if a.orden == "ciclo":
         with conectar(aj.database_url, autocommit=True) as con:

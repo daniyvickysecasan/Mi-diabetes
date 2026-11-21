@@ -20,7 +20,8 @@ Las no urgentes esperan de 23:00 a 08:00 y son como mucho 6 al día. Umbrales en
 python -m servicios.anomalias servicio        # contenedor `anomalias`
 python -m servicios.anomalias ciclo
 python -m servicios.anomalias probar-aviso
-python -m servicios.anomalias evaluar --desde 2026-05-01    # criterio: ≥ 80 % y ≤ 1 falsa/día
+python -m servicios.anomalias evaluar --desde 2026-11-21 --en-vivo   # criterio: ≥ 80 % y ≤ 1 falsa/día, ≥ 20 casos
+python -m servicios.anomalias evaluar --desde 2026-05-01             # reglas sobre el histórico
 python -m servicios.anomalias umbrales
 ```
 

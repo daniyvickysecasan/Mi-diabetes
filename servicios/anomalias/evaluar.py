@@ -1,5 +1,10 @@
-"""Criterio de aceptación de la fase 4: sobre el histórico etiquetado a mano (unos 20 casos),
-detectar ≥ 80 % con ≤ 1 falsa alarma diaria de media.
+"""Criterio de aceptación de la fase 4: detectar ≥ 80 % con ≤ 1 falsa alarma diaria de media.
+
+Dos formas de medirlo:
+- `evaluar_en_vivo` (la que vale desde el 21-11-2026, decisión de Daniel): durante unas dos semanas
+  Daniel responde a los avisos (aciertos y falsas alarmas) y etiqueta a mano solo lo que se
+  escapa (episodios_etiquetados que no casan con ningún aviso). Hacen falta ≥ 20 casos reales.
+- `evaluar` (abajo): pasa las reglas por el histórico y lo compara con episodios etiquetados.
 
 Pasa las reglas por el histórico SIN guardar ni avisar, y compara con `episodios_etiquetados`:
 - Detectado: hay una detección del mismo tipo que se solapa con el episodio (± margen).
@@ -14,6 +19,46 @@ from servicios.anomalias import detector as D
 from servicios.anomalias import reglas as R
 
 TIPOS_EVALUADOS = ("hueco", "presion", "subida_sin_comida", "dosis_sin_comida", "olvido_tresiba")
+
+
+MINIMO_CASOS = 20
+
+
+def evaluar_en_vivo(con, desde: datetime, hasta: datetime, u: R.Umbrales = R.UMBRALES) -> dict:
+    """Aciertos = avisos respondidos con una opción que no es falsa alarma (incluido «No lo sé»).
+    Falsas = respondidos con una opción de falsa alarma. Escapados = episodios etiquetados a mano
+    que no casan con ningún aviso del mismo tipo. Detección = aciertos / (aciertos + escapados)."""
+    margen = timedelta(minutes=u.margen_solape_min)
+    avisos = con.execute(
+        """SELECT a.*, (SELECT o->>'falsa_alarma' = 'true' FROM jsonb_array_elements(a.opciones) o
+                        WHERE o->>'clave' = a.respuesta) AS falsa
+           FROM anomalias a WHERE a.detectada_en >= %s AND a.detectada_en <= %s""", (desde, hasta)).fetchall()
+    etiquetas = con.execute("SELECT * FROM episodios_etiquetados WHERE fin >= %s AND inicio <= %s",
+                            (desde, hasta)).fetchall()
+    dias = max(1.0, (hasta - desde).total_seconds() / 86400)
+    por_tipo, tot = {}, {"aciertos": 0, "falsas": 0, "sin_responder": 0, "escapados": 0}
+    for tipo in R.TIPOS:
+        av = [a for a in avisos if a["tipo"] == tipo]
+        et = [e for e in etiquetas if e["tipo"] == tipo]
+        resp = [a for a in av if a["estado"] == "respondida"]
+        falsas = sum(1 for a in resp if a["falsa"])
+        aciertos = len(resp) - falsas
+        escapados = sum(1 for e in et if not any(
+            _solapan(e["inicio"], e["fin"], a["inicio"], a["fin"] or a["inicio"], margen) for a in av))
+        sin = sum(1 for a in av if a["estado"] == "abierta")
+        por_tipo[tipo] = {"avisos": len(av), "aciertos": aciertos, "falsas": falsas, "sin_responder": sin,
+                          "escapados": escapados,
+                          "deteccion_pct": round(100 * aciertos / (aciertos + escapados), 1) if aciertos + escapados else None}
+        for k, v in (("aciertos", aciertos), ("falsas", falsas), ("sin_responder", sin), ("escapados", escapados)):
+            tot[k] += v
+    casos = tot["aciertos"] + tot["escapados"]
+    pct = round(100 * tot["aciertos"] / casos, 1) if casos else None
+    falsas_dia = round(tot["falsas"] / dias, 2)
+    return {"modo": "en_vivo", "desde": desde.isoformat(), "hasta": hasta.isoformat(), "dias": round(dias, 1),
+            "version": R.VERSION, "por_tipo": por_tipo,
+            "total": tot | {"casos_reales": casos, "deteccion_pct": pct, "falsas_por_dia": falsas_dia,
+                            "casos_suficientes": casos >= MINIMO_CASOS,
+                            "cumple": casos >= MINIMO_CASOS and pct >= 80 and falsas_dia <= 1}}
 
 
 def detectar_historico(con, desde: datetime, hasta: datetime, u: R.Umbrales = R.UMBRALES) -> list[dict]:
