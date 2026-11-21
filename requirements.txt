@@ -5,3 +5,4 @@ httpx==0.28.1
 webauthn==3.0.1
 requests==2.32.5
 rapidfuzz==3.14.3
+pywebpush==2.0.3

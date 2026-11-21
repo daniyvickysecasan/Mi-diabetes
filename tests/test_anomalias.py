@@ -247,3 +247,23 @@ def test_episodio_ya_terminado_no_se_notifica(con, ntfy):
     a = con.execute("SELECT * FROM anomalias WHERE tipo = 'subida_sin_comida'").fetchone()
     assert a is not None and a["aviso_estado"] == "retenido" and a["estado"] == "abierta"
     assert r["avisos"]["enviados"] == 0 and ntfy.app.state.mensajes == []
+
+
+def test_evaluacion_en_vivo(con):
+    """Aciertos y falsas de las respuestas; escapados = etiquetas sin aviso."""
+    _lecturas(con, [120] * 6, hasta=AHORA - timedelta(minutes=40))
+    D.ciclo(con, AHORA, U)                                          # un hueco
+    con.execute("UPDATE anomalias SET estado = 'respondida', respuesta = 'movil', respondida_en = now()")
+    _parametros(con)
+    _lecturas(con, [140] * 3, hasta=AHORA + timedelta(minutes=10))
+    _dosis(con, AHORA - timedelta(minutes=20), u=5)
+    D.ciclo(con, AHORA + timedelta(minutes=10), U)                  # una acumulación
+    con.execute("""UPDATE anomalias SET estado = 'respondida', respuesta = 'no_era', respondida_en = now()
+                   WHERE tipo = 'acumulacion'""")
+    con.execute("INSERT INTO episodios_etiquetados (tipo, inicio, fin) VALUES ('presion', %s, %s)",
+                (AHORA - timedelta(hours=3), AHORA - timedelta(hours=2)))
+    r = E.evaluar_en_vivo(con, AHORA - timedelta(days=1), AHORA + timedelta(hours=1))
+    t = r["total"]
+    assert (t["aciertos"], t["falsas"], t["escapados"], t["casos_reales"]) == (1, 1, 1, 2)
+    assert t["deteccion_pct"] == 50.0 and t["casos_suficientes"] is False and t["cumple"] is False
+    assert r["por_tipo"]["presion"]["escapados"] == 1 and r["por_tipo"]["acumulacion"]["falsas"] == 1

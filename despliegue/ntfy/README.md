@@ -1,4 +1,24 @@
-# ntfy: avisos de la fase 4 en el iPhone
+# Avisos de la fase 4 en el iPhone: Web Push y ntfy
+
+Desde el 21-11-2026 (decisión de Daniel) los avisos llegan a la **PWA** por Web Push: al pulsarlos se
+abre Mi Diabetes desde la pantalla de inicio (con ntfy, iOS abre el navegador). **ntfy queda solo para
+la alerta urgente** (acumulación de insulina), como respaldo, y para cualquier aviso que Web Push no
+consiga entregar.
+
+## Web Push (una vez, en el PC, PowerShell en `despliegue`)
+
+1. `docker compose build anomalias` y luego
+   `docker compose run --rm anomalias python -m servicios.anomalias claves-push`
+2. Copia las dos líneas (`VAPID_PUBLICA=…`, `VAPID_PRIVADA=…`) al `.env`. La privada es un secreto.
+3. `docker compose up -d --build api anomalias`
+4. iPhone (iOS 16.4 o posterior): abre Mi Diabetes **desde su icono de la pantalla de inicio** →
+   Más → Avisos y preguntas → **Activar avisos** → Permitir.
+5. Prueba: `docker compose exec anomalias python -m servicios.anomalias probar-aviso`
+
+El aviso va cifrado de extremo a extremo: el servicio de push de Apple no puede leerlo. Si borras la
+PWA de la pantalla de inicio, vuelve a activar los avisos.
+
+## ntfy
 
 El servicio `anomalias` publica en el ntfy de casa (contenedor `ntfy`); la app ntfy del iPhone lo
 recibe por `https://ntfy.intelligentcontrol.net`. Las respuestas se dan en Mi Diabetes (pantalla

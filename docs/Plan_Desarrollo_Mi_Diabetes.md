@@ -116,7 +116,7 @@ Borrador del 18-11-2026, pendiente de aprobación. Si este plan y el traspaso di
 
 **Dónde.** Código en la nube; ntfy y pruebas reales en el PC.
 
-**Aceptación.** Sobre tu histórico etiquetado a mano (20 casos), detecta ≥ 80 % con ≤ 1 falsa alarma diaria de media.
+**Aceptación.** Detecta ≥ 80 % con ≤ 1 falsa alarma diaria de media, sobre al menos 20 casos reales. Desde el 21-11-2026 (decisión de Daniel) se mide en vivo durante unas dos semanas: las respuestas a los avisos dan aciertos y falsas alarmas, y Daniel etiqueta a mano solo lo que se escapa (`python -m servicios.anomalias evaluar --desde 2026-11-21 --en-vivo`). Etiquetar el histórico de meses atrás no es realista.
 
 **Riesgos.** Fatiga de notificaciones. Dependencia de la fase 2 (sin dosis, "dosis sin comida" no funciona).
 
@@ -126,7 +126,10 @@ Borrador del 18-11-2026, pendiente de aprobación. Si este plan y el traspaso di
 - Hecho en código y tests: servicio `anomalias` con seis reglas (hueco, presión, subida sin comida, Fiasp sin comida, acumulación de insulina y posible olvido de Tresiba), ntfy autoalojado en Docker, pantalla «Avisos y preguntas» con respuestas como etiquetas, etiquetado de episodios pasados y `python -m servicios.anomalias evaluar` para el criterio de aceptación.
 - Umbrales aprobados por Daniel el 20-11-2026: acumulación si (insulina activa − hidratos sin absorber / ratio) × sensibilidad > glucosa − 70, con absorción lineal de 3 h (comida) y 1 h (hidratos de corrección), urgente y repetida como mucho cada 60 min; olvido de Tresiba tras 4 h con ≥ 90 % de lecturas > 180, sin bajar y sin comida, hidratos ni Fiasp desde 2 h antes, una vez al día. Las demás son preguntas no urgentes, en silencio de 23:00 a 08:00 y como mucho 6 al día.
 - Las anomalías no entran en ningún cálculo de dosis; el freno de la sugerencia no cambia.
-- Pendiente: desplegar (cuando vuelva Docker Desktop), configurar ntfy en el iPhone (`despliegue/ntfy/README.md`), etiquetar unos 20 episodios y pasar la evaluación.
+- Desplegado el 20-11-2026 y ntfy funcionando en el iPhone el 21-11-2026. PR 25: los episodios ya terminados (más de 90 min) se guardan en la app pero no se notifican.
+- Primeras 16 h: 7 avisos respondidos, 1 falsa alarma. Sobre el histórico desde mayo, la regla de presión salta 1,7 veces al día: hay que revisarla.
+- Avisos (decisión de Daniel, 21-11-2026): Web Push a la PWA para todo, porque al pulsar un aviso de ntfy iOS abre el navegador. ntfy se queda solo para la alerta de acumulación de insulina, como respaldo, y para lo que Web Push no consiga entregar.
+- Pendiente: dos semanas de medición en vivo (ver Aceptación).
 
 ---
 

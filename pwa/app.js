@@ -515,7 +515,52 @@ function itemAviso(a) {
   return e;
 }
 
+// Web Push: la PWA de la pantalla de inicio recibe los avisos y se abre al pulsarlos.
+const PUSH_TEXTO = {
+  sin_soporte: "Este navegador no admite avisos. En el iPhone, abre Mi Diabetes desde su icono de la pantalla de inicio (iOS 16.4 o posterior).",
+  denegado: "Los avisos están bloqueados. Actívalos en Ajustes del iPhone → Notificaciones → Mi Diabetes.",
+  sin_claves: "El servidor aún no tiene configurados los avisos de la app.",
+  activo: "Activados: los avisos llegan a esta app y se abren aquí.",
+  inactivo: "Actívalos para que los avisos lleguen a esta app y se abran aquí.",
+};
+
+async function estadoPush(sincronizar = true) {
+  const p = $("push-estado"), b = $("push-activar");
+  const pinta = (k) => { p.textContent = PUSH_TEXTO[k]; b.classList.toggle("oculto", !(k === "inactivo")); };
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return pinta("sin_soporte");
+  if (Notification.permission === "denied") return pinta("denegado");
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub && Notification.permission === "granted") {
+      if (sincronizar) await pedir("/api/push/suscripcion", { ...sub.toJSON(), nombre: nombrePush() }).catch(() => {});
+      return pinta("activo");
+    }
+  } catch { /* sin service worker todavía */ }
+  pinta("inactivo");
+}
+
+const nombrePush = () => (/iPhone/.test(navigator.userAgent) ? "iPhone" : /iPad/.test(navigator.userAgent) ? "iPad" : "navegador");
+
+async function activarPush() {
+  try {
+    const { clave } = await pedir("/api/push/clave");
+    if (!clave) { $("push-estado").textContent = PUSH_TEXTO.sin_claves; return; }
+    if (await Notification.requestPermission() !== "granted") return estadoPush(false);
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) ||
+      await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(clave) });
+    await pedir("/api/push/suscripcion", { ...sub.toJSON(), nombre: nombrePush() });
+    aviso("Avisos activados en este dispositivo");
+  } catch (e) {
+    if (e.estado === 401) return mostrar("entrada");
+    aviso(`No se han podido activar: ${e.message}`, true);
+  }
+  estadoPush(false);
+}
+
 async function cargarAvisos() {
+  estadoPush();
   for (const id of ["ep-inicio", "ep-fin"]) if (!$(id).value) $(id).value = valorLocal();
   try {
     const [r, ep] = await Promise.all([pedir("/api/anomalias"), pedir("/api/episodios")]);
@@ -996,7 +1041,7 @@ function mostrar(cual) {
 
 async function iniciar() {
   pintarCola();
-  if (location.hash === "#avisos") vista = "avisos";      // al tocar un aviso de ntfy
+  if (location.hash === "#avisos") vista = "avisos";      // al tocar un aviso (Web Push o ntfy)
   try {
     const e = await pedir("/auth/estado");
     if (e.autenticado) return mostrar("panel");
@@ -1051,6 +1096,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && !$("panel").classList.contains("oculto")) { vaciarCola(); refrescarVista(); }
   });
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js");
+    navigator.serviceWorker.addEventListener("message", (ev) => {     // aviso pulsado con la app ya abierta
+      if (ev.data && ev.data.ir === "avisos" && !$("panel").classList.contains("oculto")) ir("avisos");
+    });
+  }
+  $("push-activar").addEventListener("click", activarPush);
   iniciar();
 });
