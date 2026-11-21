@@ -128,6 +128,7 @@ Borrador del 18-11-2026, pendiente de aprobación. Si este plan y el traspaso di
 - Las anomalías no entran en ningún cálculo de dosis; el freno de la sugerencia no cambia.
 - Desplegado el 20-11-2026 y ntfy funcionando en el iPhone el 21-11-2026. PR 25: los episodios ya terminados (más de 90 min) se guardan en la app pero no se notifican.
 - Primeras 16 h: 7 avisos respondidos, 1 falsa alarma. Sobre el histórico desde mayo, la regla de presión salta 1,7 veces al día: hay que revisarla.
+- Avisos (decisión de Daniel, 21-11-2026): Web Push a la PWA para todo, porque al pulsar un aviso de ntfy iOS abre el navegador. ntfy se queda solo para la alerta de acumulación de insulina, como respaldo, y para lo que Web Push no consiga entregar.
 - Pendiente: dos semanas de medición en vivo (ver Aceptación).
 
 ---

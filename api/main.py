@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api import anomalias, auth, chat, comidas, dosis, glucosa, libreview, platos, sugerencias
+from api import anomalias, auth, push, chat, comidas, dosis, glucosa, libreview, platos, sugerencias
 from comun.ajustes import Ajustes
 from comun.bd import conectar
 
@@ -54,6 +54,7 @@ def crear_app(ajustes: Ajustes | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(platos.router)
     app.include_router(anomalias.router)
+    app.include_router(push.router)
     app.mount("/", StaticFiles(directory=PWA, html=True), name="pwa")
     return app
 

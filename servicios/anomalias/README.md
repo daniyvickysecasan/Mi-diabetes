@@ -4,6 +4,9 @@ Módulo 6 (fase 4). Detecta episodios con reglas deterministas, los guarda en `a
 por el ntfy de casa. Daniel responde en la app (Más → Avisos y preguntas) y la respuesta queda como
 etiqueta. Se comunica con el resto solo por la base. **Nada de esto entra en un cálculo de dosis.**
 
+Canales (21-11-2026): Web Push a la PWA para todo (se abre la app al pulsar) y ntfy solo para la
+acumulación de insulina, como respaldo (`AVISOS_NTFY`). Si Web Push no entrega, sale por ntfy.
+
 | Tipo | Cuándo | Aviso |
 |---|---|---|
 | `hueco` | Sin lecturas más de 30 min | normal |
@@ -23,6 +26,7 @@ python -m servicios.anomalias probar-aviso
 python -m servicios.anomalias evaluar --desde 2026-11-21 --en-vivo   # criterio: ≥ 80 % y ≤ 1 falsa/día, ≥ 20 casos
 python -m servicios.anomalias evaluar --desde 2026-05-01             # reglas sobre el histórico
 python -m servicios.anomalias umbrales
+python -m servicios.anomalias claves-push      # VAPID_PUBLICA / VAPID_PRIVADA para el .env
 ```
 
 - `reglas.py`: reglas puras y textos. `detector.py`: lee la base y guarda. `avisos.py`: ntfy, silencio y

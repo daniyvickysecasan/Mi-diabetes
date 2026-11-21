@@ -54,6 +54,10 @@ class Ajustes:
     ntfy_tema: str = ""                   # tema largo y aleatorio (secreto, solo en .env)
     ntfy_token: str = ""                  # token de ntfy con permiso de escritura en el tema (secreto)
     url_app: str = ""                     # se abre al tocar el aviso (https://midiabetes.intelligentcontrol.net)
+    # Web Push a la PWA (claves VAPID: python -m servicios.anomalias claves-push). Vacío = sin Web Push.
+    vapid_publica: str = ""
+    vapid_privada: str = ""               # secreto, solo en .env
+    avisos_ntfy: str = "urgentes"         # qué va también por ntfy: urgentes, todos o ninguno
 
     # Passkey / sesión
     rp_id: str = "localhost"
@@ -94,6 +98,9 @@ class Ajustes:
             ntfy_tema=e("NTFY_TEMA") or "",
             ntfy_token=e("NTFY_TOKEN") or "",
             url_app=(e("URL_APP") or "").rstrip("/"),
+            vapid_publica=e("VAPID_PUBLICA") or "",
+            vapid_privada=e("VAPID_PRIVADA") or "",
+            avisos_ntfy=(e("AVISOS_NTFY") or "urgentes").strip().lower(),
             rp_id=e("RP_ID") or "localhost",
             rp_nombre=e("RP_NOMBRE") or "Mi Diabetes",
             origenes=origenes,
