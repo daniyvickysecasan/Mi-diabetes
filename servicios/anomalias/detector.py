@@ -13,6 +13,7 @@ from servicios.anomalias import reglas as R
 
 VENTANA_LECTURAS = timedelta(hours=12)     # lo que mira cada ciclo
 EPISODIO_RECIENTE = timedelta(hours=6)     # un episodio más viejo ya no se pregunta (salvo huecos)
+AVISO_TARDIO = timedelta(minutes=90)       # terminado hace más: se guarda en la app, pero no se notifica
 TIPOS_CHAT_COMIDA = ("comida", "bebida")
 
 
@@ -151,13 +152,18 @@ def guardar(con, episodios: list[dict], ahora: datetime, u: R.Umbrales = R.UMBRA
                 _actualizar(con, previa, e)
             continue
         t = R.redactar(e)
+        # Al arrancar (o tras un parón) se ven episodios ya cerrados: a la app sí, al móvil no.
+        # Un hueco abierto o una Fiasp sin comida siguen valiendo como pregunta.
+        tardio = tipo in ("presion", "subida_sin_comida") and e["fin"] is not None and ahora - e["fin"] > AVISO_TARDIO
         f = con.execute(
             """INSERT INTO anomalias (tipo, inicio, fin, urgente, titulo, texto, pregunta, opciones, datos,
-                                      detector_version, umbrales, dosis_id, avisar_desde, detectada_en)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                                      detector_version, umbrales, dosis_id, avisar_desde, detectada_en,
+                                      aviso_estado, aviso_error)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (tipo, e["inicio"], e["fin"], t["urgente"], t["titulo"], t["texto"], t["pregunta"], _json(t["opciones"]),
              _json(e["datos"]), R.VERSION, _json(u.como_dict()), e["datos"].get("dosis_id"),
-             R.avisar_desde(ahora, t["urgente"], u), ahora)).fetchone()
+             R.avisar_desde(ahora, t["urgente"], u), ahora,
+             "retenido" if tardio else "pendiente", "ya había terminado" if tardio else None)).fetchone()
         nuevos.append(f["id"])
     return nuevos
 
